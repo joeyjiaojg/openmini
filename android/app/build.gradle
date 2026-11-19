@@ -2,39 +2,65 @@ plugins {
     id 'com.android.application'
 }
 
+// 签名信息不进仓库：从 android/local.properties 读（该文件已在 .gitignore 里）
+// 想自己出包就复制 local.properties.example 并填上自己的 keystore。
+def localProps = new Properties()
+def localFile = rootProject.file('local.properties')
+if (localFile.exists()) {
+    localFile.withInputStream { localProps.load(it) }
+}
+
+def ksFile = localProps.getProperty('signing.storeFile')
+def canSign = ksFile != null && !ksFile.trim().isEmpty() && rootProject.file(ksFile).exists()
+
 android {
-    namespace 'com.xiaoyou.box'
+    namespace 'com.openmini.host'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.xiaoyou.box"
+        applicationId "com.openmini.host"
         minSdk 21
         targetSdk 34
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
     }
 
-    signingConfigs {
-        release {
-            storeFile file('keystore/xiaoyou.keystore')
-            storePassword 'xiaoyou2026'
-            keyAlias 'xiaoyou'
-            keyPassword 'xiaoyou2026'
+    if (canSign) {
+        signingConfigs {
+            release {
+                storeFile rootProject.file(ksFile)
+                storePassword localProps.getProperty('signing.storePassword')
+                keyAlias localProps.getProperty('signing.keyAlias')
+                keyPassword localProps.getProperty('signing.keyPassword')
+            }
         }
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.release
+            if (canSign) {
+                signingConfig signingConfigs.release
+            }
         }
         debug {
-            signingConfig signingConfigs.release
+            if (canSign) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// 构建完成后打印产物路径，方便脚本取
+gradle.buildFinished {
+    if (canSign) {
+        println "[openmini] signed with ${ksFile}"
+    } else {
+        println "[openmini] no signing config found (local.properties missing) — release APK will be unsigned"
     }
 }

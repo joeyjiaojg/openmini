@@ -1,0 +1,22 @@
+# 构建产物
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+*.apk
+dist/
+
+# 签名密钥（永远不要提交）
+*.keystore
+*.jks
+android/app/keystore/
+
+# 编辑器 / 系统
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# 调试产物
+*.log
+*.hprof

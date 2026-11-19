@@ -1,4 +1,4 @@
-package com.xiaoyou.box;
+package com.openmini.host;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;

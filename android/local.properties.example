@@ -1,0 +1,10 @@
+# 把本文件复制成 android/local.properties 并填上你自己的签名信息。
+# local.properties 不会进版本库；没有它也能编译，只是 release APK 未签名。
+
+# SDK 路径（也可用环境变量 ANDROID_HOME）
+# sdk.dir=/path/to/android-sdk
+
+signing.storeFile=app/keystore/your.keystore
+signing.storePassword=changeit
+signing.keyAlias=your_alias
+signing.keyPassword=changeit

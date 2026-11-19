@@ -277,7 +277,7 @@
   if (h) {
     try {
       var m = JSON.parse(h.meta());
-      $('foot').textContent = '小游盒 v' + m.version + ' · 包体独立，装完即玩';
+      $('foot').textContent = 'OpenMini v' + m.version + ' · 包体独立，装完即玩';
     } catch (e) { /* 忽略 */ }
   }
 

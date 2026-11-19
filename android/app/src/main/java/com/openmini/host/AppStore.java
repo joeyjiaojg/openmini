@@ -1,4 +1,4 @@
-package com.xiaoyou.box;
+package com.openmini.host;
 
 import android.content.Context;
 import android.content.SharedPreferences;

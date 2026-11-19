@@ -16,5 +16,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "XiaoYouBox"
+rootProject.name = "OpenMini"
 include ':app'

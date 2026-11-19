@@ -1,4 +1,4 @@
-package com.xiaoyou.box;
+package com.openmini.host;
 
 import android.app.Activity;
 import android.content.Intent;
@@ -394,7 +394,7 @@ public class MainActivity extends Activity {
             c.setConnectTimeout(15000);
             c.setReadTimeout(60000);
             c.setInstanceFollowRedirects(true);
-            c.setRequestProperty("User-Agent", "XiaoYouBox/1.0");
+            c.setRequestProperty("User-Agent", "OpenMini/1.0");
             int code = c.getResponseCode();
             if (code != 200) throw new IOException("HTTP " + code);
             int total = c.getContentLength();
