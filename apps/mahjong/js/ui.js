@@ -1,0 +1,433 @@
+/* 四川血战到底 · 界面渲染（牌面用内联 SVG，无图片依赖） */
+(function (global) {
+  'use strict';
+
+  var R = global.MJRule;
+  var SEL = {
+    top: null, left: null, right: null, self: null,
+    rivers: {}, center: null, actions: null
+  };
+  var discardMode = false;
+  var pendingCb = null;
+
+  function $(id) { return document.getElementById(id); }
+  function asc(a, b) { return a - b; }
+
+  /* ---------------- 牌面 SVG ---------------- */
+  var TONG = {
+    1: [[30, 42, 13, 1]],
+    2: [[30, 28, 9, 0], [30, 56, 9, 0]],
+    3: [[18, 26, 8, 0], [30, 42, 8, 1], [42, 58, 8, 0]],
+    4: [[20, 28, 8, 0], [40, 28, 8, 1], [20, 56, 8, 1], [40, 56, 8, 0]],
+    5: [[20, 26, 7, 0], [40, 26, 7, 1], [30, 42, 7, 2], [20, 58, 7, 1], [40, 58, 7, 0]],
+    6: [[20, 24, 7, 0], [40, 24, 7, 1], [20, 42, 7, 2], [40, 42, 7, 2], [20, 60, 7, 1], [40, 60, 7, 0]],
+    7: [[20, 22, 6, 0], [30, 22, 6, 1], [40, 22, 6, 2], [20, 42, 6, 1], [40, 42, 6, 0], [20, 60, 6, 2], [40, 60, 6, 1]],
+    8: [[20, 20, 6, 0], [40, 20, 6, 1], [20, 36, 6, 1], [40, 36, 6, 0], [20, 52, 6, 0], [40, 52, 6, 1], [20, 68, 6, 1], [40, 68, 6, 0]],
+    9: [[18, 22, 6, 0], [30, 22, 6, 1], [42, 22, 6, 2], [18, 42, 6, 1], [30, 42, 6, 2], [42, 42, 6, 0], [18, 62, 6, 2], [30, 62, 6, 0], [42, 62, 6, 1]]
+  };
+  var TIAO = {
+    2: [[30, 16], [30, 48]],
+    3: [[30, 10], [18, 44], [42, 44]],
+    4: [[20, 18], [40, 18], [20, 50], [40, 50]],
+    5: [[20, 14], [40, 14], [30, 34], [20, 54], [40, 54]],
+    6: [[20, 10], [40, 10], [20, 32], [40, 32], [20, 54], [40, 54]],
+    7: [[30, 6], [20, 28], [40, 28], [20, 48], [40, 48], [20, 66], [40, 66]],
+    8: [[20, 8], [40, 8], [20, 28], [40, 28], [20, 48], [40, 48], [20, 68], [40, 68]],
+    9: [[16, 8], [30, 8], [44, 8], [16, 32], [30, 32], [44, 32], [16, 56], [30, 56], [44, 56]]
+  };
+  var TONG_COLORS = ['#1b6b93', '#c0392b', '#1f8a5b'];
+
+  function dotsSVG(rank) {
+    var list = TONG[rank] || [];
+    var s = '';
+    for (var i = 0; i < list.length; i++) {
+      var d = list[i];
+      var c = TONG_COLORS[d[3] % 3];
+      s += '<circle cx="' + d[0] + '" cy="' + d[1] + '" r="' + d[2] + '" fill="none" stroke="' + c + '" stroke-width="2.6"/>';
+      s += '<circle cx="' + d[0] + '" cy="' + d[1] + '" r="' + (d[2] * 0.38) + '" fill="' + c + '" opacity="0.72"/>';
+    }
+    return s;
+  }
+
+  function sticksSVG(rank) {
+    if (rank === 1) {
+      // 一条：画成幺鸡的样子（一根粗条 + 鸟头）
+      return '<g stroke="#186b45" stroke-width="3" fill="none">'
+        + '<rect x="26" y="20" width="8" height="42" rx="4" fill="#1f8a5b" stroke="none"/>'
+        + '<circle cx="30" cy="16" r="8" fill="#1f8a5b"/>'
+        + '<circle cx="27" cy="14" r="1.6" fill="#fff"/>'
+        + '<path d="M30 60 L22 72 L30 68 L38 72 Z" fill="#c0392b" stroke="none"/>'
+        + '</g>';
+    }
+    var list = TIAO[rank] || [];
+    var s = '';
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i];
+      s += '<rect x="' + (p[0] - 3) + '" y="' + p[1] + '" width="6" height="17" rx="3" fill="#1f8a5b"/>';
+      s += '<rect x="' + (p[0] - 3) + '" y="' + (p[1] + 6) + '" width="6" height="5" fill="#c0392b" opacity="0.85"/>';
+    }
+    return s;
+  }
+
+  function wanSVG(rank) {
+    var num = R.NUM_CH[rank];
+    return '<text x="30" y="36" text-anchor="middle" font-size="31" font-family="serif" font-weight="600" fill="#173a6b">' + num + '</text>'
+      + '<text x="30" y="72" text-anchor="middle" font-size="27" font-family="serif" font-weight="600" fill="#b8342a">萬</text>';
+  }
+
+  function faceSVG(t) {
+    var rank = R.rankOf(t), suit = R.suitOf(t);
+    var inner;
+    if (suit === 0) inner = wanSVG(rank);
+    else if (suit === 1) inner = dotsSVG(rank);
+    else inner = sticksSVG(rank);
+    return '<svg viewBox="0 0 60 84" preserveAspectRatio="xMidYMid meet">' + inner + '</svg>';
+  }
+
+  function tileHTML(t, extra) {
+    return '<div class="tile' + (extra ? ' ' + extra : '') + '" data-tile="' + t + '">'
+      + '<div class="face">' + faceSVG(t) + '</div></div>';
+  }
+
+  function backHTML(extra) {
+    return '<div class="tile back' + (extra ? ' ' + extra : '') + '"><div class="patch"></div></div>';
+  }
+
+  function meldHTML(meld) {
+    var n = meld.type === 'peng' ? 3 : 4;
+    var s = '<div class="meld">';
+    for (var i = 0; i < n; i++) s += tileHTML(meld.tile, 'sm');
+    s += '</div>';
+    return s;
+  }
+
+  /* ---------------- 座位 ---------------- */
+  function renderSeat(G, seat, elId) {
+    var p = G.players[seat];
+    var el = $(elId);
+    if (!el) return;
+    var h = '';
+    h += '<div class="pinfo' + (p.won ? ' won' : '') + '">';
+    h += '<span class="pname">' + p.name + '</span>';
+    h += '<span class="pscore ' + (p.score > 0 ? 'up' : (p.score < 0 ? 'down' : '')) + '">' + (p.score > 0 ? '+' : '') + p.score + '</span>';
+    if (p.lack >= 0) h += '<span class="plack">缺' + R.SUIT_CH[p.lack] + '</span>';
+    if (p.won) h += '<span class="pwin">' + (p.winInfo ? p.winInfo.names.join('+') : '胡') + '</span>';
+    h += '</div>';
+    h += '<div class="hand-side">';
+    if (p.won) {
+      var hs = p.hand.slice(0).sort(asc);
+      for (var i = 0; i < hs.length; i++) h += tileHTML(hs[i], 'xs');
+    } else {
+      for (var k = 0; k < p.hand.length; k++) h += backHTML('xs');
+    }
+    h += '</div>';
+    if (p.melds.length) {
+      h += '<div class="melds">';
+      for (var m = 0; m < p.melds.length; m++) h += meldHTML(p.melds[m]);
+      h += '</div>';
+    }
+    el.innerHTML = h;
+  }
+
+  function renderSelf(G) {
+    var p = G.players[0];
+    var el = $('seat-self');
+    var h = '';
+    h += '<div class="pinfo">';
+    h += '<span class="pname">你</span>';
+    h += '<span class="pscore ' + (p.score > 0 ? 'up' : (p.score < 0 ? 'down' : '')) + '">' + (p.score > 0 ? '+' : '') + p.score + '</span>';
+    if (p.lack >= 0) h += '<span class="plack">缺' + R.SUIT_CH[p.lack] + '</span>';
+    if (p.won) h += '<span class="pwin">' + (p.winInfo ? p.winInfo.names.join('+') + ' ' + p.winInfo.score + '分' : '胡') + '</span>';
+    h += '<span class="ting" id="tingTip"></span>';
+    h += '</div>';
+
+    if (p.melds.length) {
+      h += '<div class="melds">';
+      for (var m = 0; m < p.melds.length; m++) h += meldHTML(p.melds[m]);
+      h += '</div>';
+    }
+
+    var hand = p.hand.slice(0);
+    var last = p.lastDraw;
+    if (last >= 0) {
+      var idx = hand.lastIndexOf(last);
+      if (idx >= 0) hand.splice(idx, 1);
+      hand.sort(asc);
+      hand.push(last);
+    } else {
+      hand.sort(asc);
+    }
+    var cnt = R.cntOf(p.hand);
+    h += '<div class="hand" id="hand">';
+    for (var i = 0; i < hand.length; i++) {
+      var cls = '';
+      if (last >= 0 && i === hand.length - 1) cls = 'fresh';
+      if (p.lack >= 0 && R.suitOf(hand[i]) === p.lack) cls += ' lack';
+      h += tileHTML(hand[i], cls);
+    }
+    h += '</div>';
+    el.innerHTML = h;
+
+    // 听牌提示
+    if (!p.won && p.lack >= 0) {
+      var tip = $('tingTip');
+      var w = R.waitingTiles(cnt, p.melds.length);
+      var noLack = !hasLack(cnt, p.lack);
+      if (tip) {
+        if (w.length && noLack) {
+          var names = [];
+          for (var x = 0; x < w.length; x++) names.push(R.shortName(w[x]));
+          tip.textContent = '听 ' + names.join(' ');
+          tip.className = 'ting on';
+        } else {
+          tip.textContent = '';
+          tip.className = 'ting';
+        }
+      }
+    }
+    el.className = 'seat seat-self' + (discardMode && G.turn === 0 ? ' myturn' : '');
+  }
+
+  function hasLack(cnt, suit) {
+    for (var i = suit * 9; i < suit * 9 + 9; i++) if (cnt[i] > 0) return true;
+    return false;
+  }
+
+  function renderRivers(G) {
+    var map = { 0: 'river-0', 1: 'river-1', 2: 'river-2', 3: 'river-3' };
+    for (var s = 0; s < 4; s++) {
+      var el = $(map[s]);
+      if (!el) continue;
+      var p = G.players[s];
+      var h = '<div class="rlabel">' + (s === 0 ? '你' : p.name.split(' · ')[0]) + '</div><div class="rcards">';
+      for (var i = 0; i < p.discards.length; i++) {
+        var isLast = (G.lastDiscard === p.discards[i] && G.fromSeat === s && i === p.discards.length - 1);
+        h += tileHTML(p.discards[i], 'xs' + (isLast ? ' hot' : ''));
+      }
+      h += '</div>';
+      el.innerHTML = h;
+    }
+  }
+
+  function renderCenter(G) {
+    var el = $('centerInfo');
+    if (el) el.textContent = '剩 ' + G.wall.length;
+  }
+
+  function render(G) {
+    if (!G) return;
+    renderSeat(G, 2, 'seat-top');
+    renderSeat(G, 3, 'seat-right');
+    renderSeat(G, 1, 'seat-left');
+    renderSelf(G);
+    renderRivers(G);
+    renderCenter(G);
+  }
+
+  /* ---------------- 面板 ---------------- */
+  function showLack(cb) {
+    var G = global.MJGame.state;
+    var counts = [0, 0, 0];
+    var hand = G.players[0].hand;
+    for (var i = 0; i < hand.length; i++) counts[R.suitOf(hand[i])]++;
+    var h = '<div class="panel">'
+      + '<h2>定缺</h2>'
+      + '<p class="hint">选一门当作缺门。必须先打完这门牌才能胡牌，缺门的牌也不能碰杠。</p>'
+      + '<div class="lack-row">';
+    for (var s = 0; s < 3; s++) {
+      var cls = counts[s] === 0 ? ' zero' : (counts[s] <= 3 ? ' few' : '');
+      h += '<button class="lack-btn' + cls + '" data-suit="' + s + '">'
+        + '<b>' + R.SUIT_CH[s] + '</b><i>' + counts[s] + ' 张</i></button>';
+    }
+    h += '</div>'
+      + '<p class="hint small">建议缺张数最少的一门</p>'
+      + '</div>';
+    var ov = $('lackOverlay');
+    ov.innerHTML = h;
+    ov.className = 'overlay on';
+    var btns = ov.querySelectorAll('.lack-btn');
+    for (var k = 0; k < btns.length; k++) {
+      btns[k].addEventListener('click', function () {
+        var suit = parseInt(this.getAttribute('data-suit'), 10);
+        hideLack();
+        if (global.MJVoice) global.MJVoice.unlock();
+        cb(suit);
+      }, false);
+    }
+  }
+
+  function hideLack() {
+    var ov = $('lackOverlay');
+    if (ov) { ov.className = 'overlay'; ov.innerHTML = ''; }
+  }
+
+  function showSelfActions(canWin, canGang, cb) {
+    var h = '';
+    if (canWin) h += '<button class="act hu" data-act="hu">胡</button>';
+    if (canGang) h += '<button class="act gang" data-act="gang">杠</button>';
+    if (canWin || canGang) h += '<button class="act pass" data-act="pass">过</button>';
+    showActions(h, cb);
+  }
+
+  function showClaimActions(human, cb) {
+    var h = '';
+    if (human.canHu) h += '<button class="act hu" data-act="hu">胡</button>';
+    if (human.canGang) h += '<button class="act gang" data-act="gang">杠</button>';
+    if (human.canPeng) h += '<button class="act peng" data-act="peng">碰</button>';
+    h += '<button class="act pass" data-act="pass">过</button>';
+    showActions(h, cb);
+  }
+
+  function showActions(html, cb) {
+    var el = $('actions');
+    el.innerHTML = html;
+    el.className = 'actions on';
+    pendingCb = cb;
+    var btns = el.querySelectorAll('button');
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].addEventListener('click', function () {
+        var act = this.getAttribute('data-act');
+        var f = pendingCb;
+        pendingCb = null;
+        hideActions();
+        if (f) f(act);
+      }, false);
+    }
+  }
+
+  function hideActions() {
+    var el = $('actions');
+    if (!el) return;
+    el.className = 'actions';
+    el.innerHTML = '';
+    pendingCb = null;
+  }
+
+  function chooseGang(gangs, cb) {
+    var h = '<div class="panel">'
+      + '<h2>选一个杠</h2><div class="gang-row">';
+    for (var i = 0; i < gangs.length; i++) {
+      h += '<button class="gang-pick" data-i="' + i + '">' + R.tileName(gangs[i].tile)
+        + '<i>' + (gangs[i].type === 'angang' ? '暗杠' : '补杠') + '</i></button>';
+    }
+    h += '</div></div>';
+    var ov = $('lackOverlay');
+    ov.innerHTML = h;
+    ov.className = 'overlay on';
+    var btns = ov.querySelectorAll('.gang-pick');
+    for (var k = 0; k < btns.length; k++) {
+      btns[k].addEventListener('click', function () {
+        var idx = parseInt(this.getAttribute('data-i'), 10);
+        hideLack();
+        cb(gangs[idx]);
+      }, false);
+    }
+  }
+
+  function setDiscardMode(on) {
+    discardMode = !!on;
+    var el = $('seat-self');
+    if (el) {
+      if (on) el.className = 'seat seat-self myturn';
+      else el.className = 'seat seat-self';
+    }
+  }
+
+  function flashWin(p, res) {
+    var ov = $('lackOverlay');
+    ov.innerHTML = '<div class="winflash"><b>' + (p.isHuman ? '你胡了！' : p.name + ' 胡了')
+      + '</b><i>' + res.names.join(' + ') + ' · ' + res.score + ' 分</i></div>';
+    ov.className = 'overlay on win';
+    setTimeout(function () {
+      if (ov.className.indexOf('win') >= 0) { ov.className = 'overlay'; ov.innerHTML = ''; }
+    }, 1500);
+  }
+
+  function showResult(G) {
+    var rows = [];
+    var order = [0, 1, 2, 3];
+    var lvName = ['入门', '进阶', '高手'][G.level] || '进阶';
+    var h = '<div class="panel result"><h2>本局结算 <i class="lvtag">' + lvName + '</i></h2><div class="rtable">';
+    for (var i = 0; i < order.length; i++) {
+      var p = G.players[order[i]];
+      var st = '';
+      if (p.won) st = p.winInfo ? p.winInfo.names.join('+') : '胡';
+      else if (p.huazhu) st = '花猪';
+      else if (p.ting) st = '听牌';
+      else st = '未听牌';
+      h += '<div class="rrow' + (p.won ? ' w' : '') + '">'
+        + '<span class="rn">' + p.name + '</span>'
+        + '<span class="rs">' + st + '</span>'
+        + '<span class="rp ' + (p.score > 0 ? 'up' : (p.score < 0 ? 'down' : '')) + '">' + (p.score > 0 ? '+' : '') + p.score + '</span>'
+        + '</div>';
+    }
+    h += '</div><div class="rbtns">'
+      + '<button id="btnAgain">再来一局</button>'
+      + '<button id="btnHome" class="ghost">回主页</button>'
+      + '</div></div>';
+    var ov = $('resultOverlay');
+    ov.innerHTML = h;
+    ov.className = 'overlay on';
+    $('btnAgain').addEventListener('click', function () {
+      hideResult();
+      global.MJGame.restart(global.MJGame.state.auto);
+    }, false);
+    $('btnHome').addEventListener('click', function () {
+      hideResult();
+      $('homeOverlay').className = 'overlay on';
+    }, false);
+  }
+
+  function hideResult() {
+    var ov = $('resultOverlay');
+    if (ov) { ov.className = 'overlay'; ov.innerHTML = ''; }
+  }
+
+  function updateLog(G) {
+    var el = $('logBox');
+    if (!el) return;
+    var lines = G.events.slice(-4);
+    var h = '';
+    for (var i = 0; i < lines.length; i++) h += '<div>' + lines[i] + '</div>';
+    el.innerHTML = h;
+  }
+
+  function bindHand() {
+    // 手牌会被反复重建，事件挂在 document 上做委托
+    document.addEventListener('click', function (e) {
+      var node = e.target;
+      var inHand = false;
+      while (node && node !== document.body) {
+        if (node.id === 'hand') { inHand = true; break; }
+        node = node.parentNode;
+      }
+      if (!inHand) return;
+      node = e.target;
+      while (node && node.id !== 'hand') {
+        if (node.getAttribute && node.getAttribute('data-tile') !== null) {
+          var t = parseInt(node.getAttribute('data-tile'), 10);
+          if (!isNaN(t)) global.MJGame.humanDiscard(t);
+          return;
+        }
+        node = node.parentNode;
+      }
+    }, false);
+  }
+
+  global.MJUI = {
+    render: render,
+    showLack: showLack,
+    hideLack: hideLack,
+    showSelfActions: showSelfActions,
+    showClaimActions: showClaimActions,
+    showActions: showActions,
+    hideActions: hideActions,
+    chooseGang: chooseGang,
+    setDiscardMode: setDiscardMode,
+    flashWin: flashWin,
+    showResult: showResult,
+    hideResult: hideResult,
+    updateLog: updateLog,
+    bindHand: bindHand
+  };
+})(window);

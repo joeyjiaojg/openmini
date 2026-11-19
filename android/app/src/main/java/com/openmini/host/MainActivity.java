@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
@@ -108,9 +109,24 @@ public class MainActivity extends Activity {
 
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         setContentView(webView);
-        goHome();
+        // 转屏会重建 Activity（manifest 未声明 configChanges），
+        // 重建时把正在用的应用捞回来，直接按新尺寸加载，不走主页
+        String saved = b == null ? null : b.getString("omAppId");
+        if (saved != null && !HOST.equals(saved) && saved.matches(ID_RE) && store.get(saved) != null) {
+            currentAppId = saved;
+            applyOrientation(store.get(saved));
+            webView.loadUrl(url(saved, "/" + store.entryOf(saved)));
+        } else {
+            goHome();
+        }
 
         handleViewIntent(getIntent());
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (currentAppId != null) outState.putString("omAppId", currentAppId);
     }
 
     @Override
@@ -127,7 +143,23 @@ public class MainActivity extends Activity {
 
     private void goHome() {
         currentAppId = null;
+        applyOrientation(null); // 回启动器一律恢复竖屏
         if (webView != null) webView.loadUrl(url(HOST, "/index.html"));
+    }
+
+    /** 按包 manifest 的 orientation 字段转屏：landscape/sensor 可选，默认竖屏 */
+    private void applyOrientation(JSONObject manifest) {
+        String o = manifest == null ? "" : manifest.optString("orientation", "");
+        try {
+            if ("landscape".equalsIgnoreCase(o)) {
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+            } else if ("sensor".equalsIgnoreCase(o)) {
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
+            } else {
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private void openApp(String id) {
@@ -141,6 +173,7 @@ public class MainActivity extends Activity {
             return;
         }
         currentAppId = id;
+        applyOrientation(m);
         webView.loadUrl(url(id, "/" + store.entryOf(id)));
     }
 

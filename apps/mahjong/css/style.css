@@ -1,0 +1,335 @@
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0; padding: 0; width: 100%; height: 100%;
+  overflow: hidden; background: #06201a;
+  font-family: -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  color: #e8e2d2;
+  -webkit-user-select: none; user-select: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+#board {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background:
+    radial-gradient(circle at 50% 40%, #176148 0%, #0d3d2c 48%, #061d16 100%);
+}
+
+/* ================= 座位 ================= */
+.seat { position: absolute; z-index: 5; }
+
+.seat-top {
+  top: 0; left: 0; right: 0; height: 15vh;
+  padding: 4px 10px 0;
+  display: flex; flex-direction: column; align-items: center;
+}
+.seat-top .hand-side { display: flex; flex-direction: row; }
+.seat-top .melds { display: flex; flex-direction: row; margin-top: 2px; }
+
+.seat-left {
+  left: 0; top: 15vh; bottom: 27vh; width: 11vw;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+}
+.seat-right {
+  right: 0; top: 15vh; bottom: 27vh; width: 11vw;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+}
+.seat-left .hand-side, .seat-right .hand-side {
+  display: flex; flex-direction: column; align-items: center;
+}
+.seat-left .melds, .seat-right .melds { display: flex; flex-direction: column; }
+
+.seat-self {
+  left: 0; right: 0; bottom: 0; height: 27vh;
+  padding: 0 4px 4px;
+  display: flex; flex-direction: column; justify-content: flex-end;
+}
+.seat-self.myturn {
+  background: linear-gradient(to top, rgba(201, 161, 90, .14), transparent 70%);
+}
+
+/* 玩家信息条 */
+.pinfo {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; line-height: 1.4; color: #cfe3d6;
+  white-space: nowrap;
+}
+.pinfo .pname { font-weight: 600; margin-right: 5px; }
+.pinfo .pscore { font-size: 11px; color: #9fb2a6; }
+.pinfo .pscore.up { color: #7ee0a8; }
+.pinfo .pscore.down { color: #ff9a8a; }
+.pinfo .plack {
+  margin-left: 5px; padding: 0 4px; border-radius: 3px;
+  background: rgba(201, 161, 90, .18); color: #e2c98d; font-size: 10px;
+}
+.pinfo .pwin {
+  margin-left: 5px; padding: 0 4px; border-radius: 3px;
+  background: rgba(200, 60, 50, .8); color: #fff; font-size: 10px;
+}
+.ting { margin-left: 6px; font-size: 10px; color: #8fd8ff; }
+.ting.on {
+  color: #06201a; background: #8fd8ff; padding: 0 5px; border-radius: 3px; font-weight: 600;
+}
+
+.seat-left .pinfo, .seat-right .pinfo {
+  flex-direction: column; font-size: 10px; line-height: 1.6;
+}
+.seat-left .pinfo .pname, .seat-right .pinfo .pname {
+  margin: 0; max-width: 10vw; overflow: hidden; white-space: normal; text-align: center;
+}
+
+/* ================= 牌 ================= */
+.hand { display: flex; justify-content: center; align-items: flex-end; padding-top: 2px; }
+
+.tile {
+  position: relative; flex: 0 0 auto;
+  width: 6.7vw; height: 9.5vw;
+  margin-right: 1px;
+  background: linear-gradient(155deg, #fdfbf2 0%, #f4ecd8 62%, #e9dfc6 100%);
+  border-radius: 3px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, .28), inset 0 -1px 0 rgba(190, 175, 140, .8);
+  overflow: hidden;
+}
+.tile .face { position: absolute; top: 3%; left: 3%; right: 3%; bottom: 3%; }
+.tile svg { width: 100%; height: 100%; display: block; }
+
+.tile.sm { width: 5.6vw; height: 7.9vw; margin-right: 1px; }
+.tile.xs { width: 5vw; height: 7.1vw; margin-right: 1px; }
+.tile.xs .face, .tile.sm .face { top: 2%; left: 2%; right: 2%; bottom: 2%; }
+
+.tile.fresh { box-shadow: 0 0 0 2px #e8c46a, 0 2px 6px rgba(0, 0, 0, .5); }
+.tile.lack { opacity: .72; }
+.tile.hot { box-shadow: 0 0 0 2px #ff6b52, 0 0 8px rgba(255, 107, 82, .6); }
+
+.tile.back {
+  background: linear-gradient(150deg, #2b8c66 0%, #176a4c 55%, #0f5238 100%);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, .35);
+}
+.tile.back .patch {
+  position: absolute; top: 12%; left: 12%; right: 12%; bottom: 12%;
+  border: 1px solid rgba(255, 255, 255, .22);
+  border-radius: 2px;
+  background: repeating-linear-gradient(45deg, rgba(255, 255, 255, .07) 0 3px, transparent 3px 6px);
+}
+
+.meld { display: flex; flex-direction: row; margin-right: 3px; }
+
+/* ================= 中央牌河 ================= */
+#center {
+  position: absolute; top: 15vh; bottom: 27vh; left: 12vw; right: 12vw;
+  display: flex; flex-wrap: wrap; align-content: center;
+  border-radius: 8px;
+}
+.river {
+  width: 50%; height: 45%;
+  padding: 1px 3px;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.river .rlabel {
+  font-size: 9px; color: rgba(200, 220, 210, .5); line-height: 1.2;
+}
+.river .rcards { display: flex; flex-wrap: wrap; align-content: flex-start; }
+
+#centerInfo {
+  position: absolute; top: 50%; left: 50%;
+  -webkit-transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%);
+  padding: 3px 10px; border-radius: 11px;
+  background: rgba(4, 24, 18, .82);
+  border: 1px solid rgba(201, 161, 90, .45);
+  color: #e2c98d; font-size: 11px; letter-spacing: .5px;
+  z-index: 8; white-space: nowrap;
+}
+
+/* ================= 操作按钮 ================= */
+.actions {
+  position: absolute; left: 0; right: 0; bottom: 27vh;
+  display: none; justify-content: center; align-items: flex-end;
+  padding-bottom: 4px; z-index: 20;
+}
+.actions.on { display: flex; }
+
+.act {
+  min-width: 54px; height: 44px; margin: 0 4px;
+  border: none; border-radius: 8px;
+  font-size: 17px; font-weight: 700; color: #fff;
+  font-family: inherit;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, .45);
+}
+.act:active { -webkit-transform: scale(.94); transform: scale(.94); }
+.act.hu { background: linear-gradient(180deg, #e0503c, #b32a1c); }
+.act.gang { background: linear-gradient(180deg, #d8ac52, #a97c22); color: #2a1d05; }
+.act.peng { background: linear-gradient(180deg, #3d8fd1, #22608f); }
+.act.pass { background: linear-gradient(180deg, #6a7f75, #46564e); }
+
+/* ================= 浮层 ================= */
+.overlay {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(2, 14, 10, .72);
+  z-index: 30; padding: 16px;
+}
+.overlay.on { display: flex; }
+.overlay.win { background: rgba(2, 14, 10, .35); }
+
+.panel {
+  width: 100%; max-width: 340px;
+  background: linear-gradient(180deg, #14382a, #0a261c);
+  border: 1px solid rgba(201, 161, 90, .38);
+  border-radius: 14px;
+  padding: 20px 18px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .6);
+  text-align: center;
+}
+.panel h1 {
+  margin: 0 0 4px; font-size: 30px; letter-spacing: 4px; color: #f0d89b;
+  font-weight: 700;
+}
+.panel h2 { margin: 0 0 8px; font-size: 19px; color: #f0d89b; letter-spacing: 2px; }
+.panel .sub { margin: 0 0 18px; font-size: 12px; color: #8aa79a; letter-spacing: 1px; }
+.panel .hint { margin: 6px 0 14px; font-size: 12px; color: #94ab9f; line-height: 1.6; }
+.panel .hint.small { font-size: 11px; color: #6f8a7d; margin-top: 10px; }
+
+/* 难度选择 */
+.level-row {
+  display: flex; justify-content: center; margin: 0 0 16px;
+}
+.level-row button {
+  min-width: 72px; height: 36px; margin: 0 5px;
+  border: 1px solid rgba(255, 255, 255, .16); border-radius: 18px;
+  background: rgba(255, 255, 255, .06); color: #9ab3a5;
+  font-family: inherit; font-size: 13px; font-weight: 600;
+}
+.level-row button.on {
+  background: linear-gradient(180deg, #3d8fd1, #22608f);
+  border-color: rgba(120, 190, 240, .5); color: #fff;
+}
+.level-row button:active { -webkit-transform: scale(.95); transform: scale(.95); }
+
+.lvtag {
+  display: inline-block; margin-left: 6px; padding: 1px 8px;
+  border-radius: 9px; font-style: normal; font-size: 11px;
+  background: rgba(61, 143, 209, .35); color: #bfe0f5;
+  vertical-align: 2px;
+}
+
+.home-btns { margin-bottom: 16px; }.home-btns button {
+  display: block; width: 100%; height: 46px; margin-bottom: 10px;
+  border: none; border-radius: 9px;
+  font-family: inherit; font-size: 16px; font-weight: 600;
+  background: linear-gradient(180deg, #d9b158, #a97f22); color: #241a04;
+}
+.home-btns button.ghost {
+  background: rgba(255, 255, 255, .08); color: #d6e3db;
+  border: 1px solid rgba(255, 255, 255, .14);
+}
+.home-btns button:active { -webkit-transform: scale(.97); transform: scale(.97); }
+
+.rules {
+  text-align: left; margin: 0 0 14px; padding-left: 18px;
+  font-size: 11.5px; color: #86a294; line-height: 1.9;
+}
+.sound {
+  background: none; border: 1px solid rgba(255, 255, 255, .16);
+  color: #9ab3a5; border-radius: 6px; padding: 5px 12px;
+  font-size: 11px; font-family: inherit;
+}
+
+/* 定缺 */
+.lack-row { display: flex; justify-content: center; margin: 6px 0 0; }
+.lack-btn {
+  width: 78px; height: 78px; margin: 0 6px;
+  border-radius: 10px; border: 1px solid rgba(201, 161, 90, .45);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .09), rgba(255, 255, 255, .02));
+  color: #efe3c6; font-family: inherit;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.lack-btn b { font-size: 26px; line-height: 1.1; }
+.lack-btn i { font-style: normal; font-size: 10px; color: #8fa89b; margin-top: 4px; }
+.lack-btn.few b { color: #8fe0b0; }
+.lack-btn.zero b { color: #6f8a7d; }
+.lack-btn:active { background: rgba(201, 161, 90, .3); }
+
+/* 选杠 */
+.gang-row { display: flex; flex-wrap: wrap; justify-content: center; }
+.gang-pick {
+  min-width: 72px; margin: 5px; padding: 8px 10px;
+  border-radius: 8px; border: 1px solid rgba(201, 161, 90, .4);
+  background: rgba(255, 255, 255, .07); color: #efe3c6;
+  font-family: inherit; font-size: 13px;
+}
+.gang-pick i { display: block; font-style: normal; font-size: 10px; color: #8fa89b; margin-top: 2px; }
+
+/* 胡牌飘字 */
+.winflash {
+  background: rgba(10, 30, 22, .92);
+  border: 1px solid rgba(201, 161, 90, .6);
+  border-radius: 12px; padding: 16px 26px; text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+}
+.winflash b { display: block; font-size: 22px; color: #ffd97a; letter-spacing: 1px; }
+.winflash i { display: block; font-style: normal; font-size: 12px; color: #9fd6b8; margin-top: 6px; }
+
+/* 结算 */
+.rtable { margin: 10px 0 16px; }
+.rrow {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 8px; margin-bottom: 5px; border-radius: 7px;
+  background: rgba(255, 255, 255, .05);
+  font-size: 13px;
+}
+.rrow.w { background: rgba(200, 60, 50, .22); }
+.rrow .rn { color: #dbe8e0; }
+.rrow .rs { flex: 1; text-align: center; font-size: 11px; color: #9ab3a5; }
+.rrow .rp { font-weight: 700; font-size: 15px; }
+.rrow .rp.up { color: #7ee0a8; }
+.rrow .rp.down { color: #ff9a8a; }
+.rbtns { display: flex; }
+.rbtns button {
+  flex: 1; height: 42px; margin: 0 4px;
+  border: none; border-radius: 8px; font-family: inherit;
+  font-size: 14px; font-weight: 600;
+  background: linear-gradient(180deg, #d9b158, #a97f22); color: #241a04;
+}
+.rbtns button.ghost {
+  background: rgba(255, 255, 255, .08); color: #d6e3db;
+  border: 1px solid rgba(255, 255, 255, .14);
+}
+
+/* 日志 */
+#logBox {
+  position: absolute; left: 12vw; right: 12vw; bottom: 27.5vh;
+  font-size: 10px; color: rgba(210, 230, 218, .55);
+  line-height: 1.5; text-align: center; z-index: 4;
+  pointer-events: none;
+  min-height: 14px;
+}
+
+/* ================= 横屏 =================
+ * 竖屏按 vw 定尺寸，横屏下 vw 太大，改按 vh 定，
+ * 侧位宽度也跟着 vh 走，保证 13 张手牌 + 副露放得下。
+ */
+@media (orientation: landscape) {
+  .tile { width: 6vh; height: 8.6vh; }
+  .tile.sm { width: 5vh; height: 7.2vh; }
+  .tile.xs { width: 4.6vh; height: 6.6vh; }
+
+  .seat-left, .seat-right { width: 14vh; }
+  .seat-left .pinfo .pname, .seat-right .pinfo .pname { max-width: 13vh; }
+  .seat-left, .seat-right { top: 16vh; bottom: 26vh; }
+  .seat-top { height: 16vh; }
+  #center { top: 16vh; bottom: 26vh; left: 15vh; right: 15vh; }
+  #logBox { left: 15vh; right: 15vh; bottom: 26.5vh; }
+  .actions { bottom: 26vh; }
+
+  /* 侧位副露横向放不下，改成竖排小牌 */
+  .seat-left .meld, .seat-right .meld { flex-direction: row; margin-right: 0; margin-bottom: 2px; }
+  .seat-left .meld .tile, .seat-right .meld .tile { width: 3.6vh; height: 5.2vh; }
+
+  .panel { max-width: 380px; }
+  .pinfo { font-size: 12px; }
+  .pinfo .pscore { font-size: 12px; }
+  .seat-left .pinfo, .seat-right .pinfo { font-size: 11px; }
+  .river .rlabel { font-size: 10px; }
+  #centerInfo { font-size: 12px; }
+}
