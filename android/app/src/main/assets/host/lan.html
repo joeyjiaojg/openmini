@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OpenMini · 局域网装包</title>
+<title>小盒子 · 局域网装包</title>
 <style>
 * { box-sizing: border-box; }
 body {
@@ -96,7 +96,7 @@ code { color: #9A8B72; }
       var r = {};
       try { r = JSON.parse(xhr.responseText); } catch (err) { r = {}; }
       if (r.ok) {
-        say('<b>' + (r.msg || '已安装') + '</b>　回到手机上的 OpenMini 就能看到了');
+        say('<b>' + (r.msg || '已安装') + '</b>　回到手机上的小盒子就能看到了');
       } else {
         say(r.msg || ('上传失败 HTTP ' + xhr.status), true);
       }

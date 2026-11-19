@@ -1,4 +1,4 @@
-# OpenMini · 小游盒
+# OpenMini · 小盒子
 
 **一个 104 KB 的小程序宿主 APK。装一次，以后所有小应用、小游戏都打成 zip 包随时装进去。**
 
@@ -47,7 +47,7 @@ OpenMini 把**运行时**和**内容**拆开：
 
 ## 下载 / 使用
 
-从 [Releases](https://github.com/joeyjiaojg/openmini/releases) 下载 `OpenMini-v1.0.0.apk`，装到手机上（minSdk 21 / Android 5.0+）。首次打开会自带一个示例应用。
+从 [Releases](https://github.com/joeyjiaojg/openmini/releases) 下载 `OpenMini-v1.0.1.apk`，装到手机上（minSdk 21 / Android 5.0+）。首次打开**默认已装好「楚汉象棋」**（人机对战 / 机器对战观战 / 三档难度），拿来就能玩。
 
 装新应用：
 
@@ -92,7 +92,32 @@ python tools/make-pkg.py apps/demo --version 1.1.0 --version-code 2
 python tools/make-pkg.py apps/xiangqi -o android/app/src/main/assets/apps/xiangqi.zip
 ```
 
-放进 `android/app/src/main/assets/apps/*.zip` 的包会在**首次启动**时自动安装（只播一次，用户删掉后不会复活）。
+放进 `android/app/src/main/assets/apps/*.zip` 的包会在**首次启动**时自动安装（只播一次，用户删掉后不会复活）。仓库里现在内置了 `xiangqi.zip`（源码在 `apps/xiangqi/`），所以新装的盒子打开就有象棋。
+
+## 包里跑的是什么代码？能装别人的小程序吗？
+
+**包里是普通网页**：`index.html` + CSS + JS，交给系统 WebView 直接渲染。没有 Node 运行时，不需要构建，也不要求单文件。
+
+以 `apps/xiangqi/` 为例：
+
+| 文件 | 是什么 |
+|---|---|
+| `index.html` / `css/style.css` | 页面骨架与样式 |
+| `js/game.js` | 对局流程、Canvas 棋盘绘制（ES5：`var` + `function`，兼容老 WebView） |
+| `js/bundle.js` | 规则引擎与 AI。源码本来是 CommonJS，开发时由 `tools/build-web.js` 用 20 行假模块系统（`__define` / `__require`）裹成 IIFE 挂到 `window.XQ` |
+
+Node 只出现在**开发机上**（跑 `build-web.js` 把引擎源码打成浏览器可用的 bundle），产物是纯 JS，手机端不需要 Node。
+
+**不能直接装微信小程序源码**：WXML / WXSS / `App()` / `Page()` / `wx.*` 都是微信运行时私有的，而 OpenMini 只提供浏览器环境。
+
+| 手上的东西 | 能否直接打进盒子 |
+|---|---|
+| H5 / 普通网页 / Vite、React、Vue 的构建产物 | ✅ 可以 |
+| 微信小程序源码（WXML / WXSS / `wx.*`） | ❌ 不行 |
+| Taro / uni-app / kbone 项目，能编译出 H5 版 | ✅ 先出 H5，再打包 |
+| 支付宝、百度等其它小程序源码 | ❌ 同样需要先转 H5 |
+
+要让别人的小程序源码**原样**跑起来，得引入小程序运行时（FinClip 这类商用容器，或微信官方的 Donut / 小程序运行时），体积会从 104 KB 涨到几 MB，而且授权、兼容性都是坑 —— 这正是本项目刻意不做的事。
 
 ## 自己编译
 
@@ -141,7 +166,7 @@ docs/                             包格式说明、截图
 
 ## 已知限制
 
-- 包是 **H5 包**（普通网页），不是微信小程序的 WXML/WXSS。微信小程序源码不能直接丢进来；要复用就先用 Taro / uni-app 编译出 H5 版。（想直接跑小程序代码得用 [FinClip](https://www.finclip.com/) 那类商用容器）
+- 只跑 H5 包，不跑小程序源码（详见上一节）。
 - 只用系统 WebView，所以兼容性下限取决于手机 WebView 版本；老机器上请按 ES5 写代码。
 - 应用之间不共享存档（这是设计目标），但也没有跨应用通信能力。
 - 没有签名校验，装进来的包被视为可信 —— 只适合自用和小范围分发，别当应用商店用。
