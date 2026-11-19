@@ -134,12 +134,18 @@ html, body {
   position: absolute; top: 50%; left: 50%;
   -webkit-transform: translate(-50%, -50%);
   transform: translate(-50%, -50%);
-  padding: 3px 10px; border-radius: 11px;
-  background: rgba(4, 24, 18, .82);
-  border: 1px solid rgba(201, 161, 90, .45);
-  color: #e2c98d; font-size: 11px; letter-spacing: .5px;
+  padding: 5px 16px; border-radius: 14px;
+  background: rgba(4, 24, 18, .88);
+  border: 1px solid rgba(201, 161, 90, .55);
+  color: #e2c98d; font-size: 15px; letter-spacing: 1px;
   z-index: 8; white-space: nowrap;
+  display: flex; align-items: baseline;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .4);
 }
+#centerInfo .clabel { font-size: 11px; color: #9ab387; margin: 0 4px; }
+#centerInfo b { font-size: 22px; font-weight: 700; color: #ffd97a; min-width: 30px; text-align: center; }
+#centerInfo.low { border-color: rgba(224, 80, 60, .7); }
+#centerInfo.low b { color: #ff8a70; }
 
 /* ================= 操作按钮 ================= */
 .actions {
@@ -331,5 +337,6 @@ html, body {
   .pinfo .pscore { font-size: 12px; }
   .seat-left .pinfo, .seat-right .pinfo { font-size: 11px; }
   .river .rlabel { font-size: 10px; }
-  #centerInfo { font-size: 12px; }
+  #centerInfo .clabel { font-size: 12px; }
+  #centerInfo b { font-size: 24px; }
 }

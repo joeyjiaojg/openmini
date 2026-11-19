@@ -211,7 +211,12 @@
 
   function renderCenter(G) {
     var el = $('centerInfo');
-    if (el) el.textContent = '剩 ' + G.wall.length;
+    if (!el) return;
+    var left = G.wall.length;
+    // 血战到底一共摸 wall.length + 已摸的张数，这里直接给剩余未摸数
+    var h = '<span class="clabel">剩余</span><b>' + left + '</b><span class="clabel">张</span>';
+    el.innerHTML = h;
+    el.className = left <= 16 ? 'low' : '';
   }
 
   function render(G) {
