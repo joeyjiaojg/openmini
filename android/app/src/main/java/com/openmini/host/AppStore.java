@@ -19,6 +19,7 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.zip.ZipEntry;
@@ -186,6 +187,7 @@ public class AppStore {
             deleteRec(stage);
 
             rememberMeta(id, sha, hint, dirSize(dest));
+            cspCache.remove(id);
 
             Result r = new Result();
             r.ok = true;
@@ -198,6 +200,24 @@ public class AppStore {
             if (msg == null || msg.length() == 0) msg = e.getClass().getSimpleName();
             return fail("安装失败: " + msg);
         }
+    }
+
+    /** manifest.csp 缓存：拦截器每个请求都会查，避免反复读盘解析 */
+    private final HashMap<String, String> cspCache = new HashMap<String, String>();
+
+    /**
+     * 包可选声明自己的 CSP（manifest "csp" 字段）。装进来的代码再想引第三方
+     * 脚本/外发数据会被这层头挡住。只放行安全字符，杜绝响应头注入；没有声明
+     * 或内容非法时返回 null（不加头，兼容旧包）。
+     */
+    public String cspOf(String id) {
+        String cached = cspCache.get(id);
+        if (cached != null) return cached.length() == 0 ? null : cached;
+        JSONObject m = get(id);
+        String c = m == null ? "" : m.optString("csp", "");
+        if (c.length() > 600 || !c.matches("[A-Za-z0-9 ;:'\"=/,._!*-]{0,600}")) c = "";
+        cspCache.put(id, c);
+        return c.length() == 0 ? null : c;
     }
 
     /** 包名只用于展示：去控制字符、限长 */
@@ -297,6 +317,7 @@ public class AppStore {
     public boolean remove(String id) {
         if (!validId(id)) return false;
         try {
+            cspCache.remove(id);
             ctx.getSharedPreferences("pkgmeta", Context.MODE_PRIVATE).edit().remove(id).apply();
             return deleteRec(dir(id));
         } catch (Exception e) {

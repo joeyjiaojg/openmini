@@ -276,6 +276,12 @@ public class MainActivity extends Activity {
                 if (!f.getCanonicalPath().startsWith(baseCanon) || !f.isFile()) return notFound();
                 String mime = mimeOf(rel);
                 r = new WebResourceResponse(mime, charsetOf(mime), new FileInputStream(f));
+                // 包可选声明自己的 CSP（manifest.csp），给装进来的代码再上一道枷锁
+                String csp = store.cspOf(sub);
+                if (csp != null && "text/html".equals(mime)) {
+                    headers.put("Content-Security-Policy", csp);
+                }
+                headers.put("Referrer-Policy", "no-referrer");
             }
         } catch (Exception e) {
             return notFound();

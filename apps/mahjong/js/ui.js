@@ -13,6 +13,14 @@
   function $(id) { return document.getElementById(id); }
   function asc(a, b) { return a - b; }
 
+  /* XSS 防御：任何进入 innerHTML 的文本一律转义。
+   * 当前插值都是内部常量，这里是纵深防御——将来接入外部数据也不会引入注入点 */
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   /* ---------------- 牌面 SVG ---------------- */
   var TONG = {
     1: [[30, 42, 13, 1]],
@@ -108,10 +116,10 @@
     if (!el) return;
     var h = '';
     h += '<div class="pinfo' + (p.won ? ' won' : '') + '">';
-    h += '<span class="pname">' + p.name + '</span>';
+    h += '<span class="pname">' + esc(p.name) + '</span>';
     h += '<span class="pscore ' + (p.score > 0 ? 'up' : (p.score < 0 ? 'down' : '')) + '">' + (p.score > 0 ? '+' : '') + p.score + '</span>';
     if (p.lack >= 0) h += '<span class="plack">缺' + R.SUIT_CH[p.lack] + '</span>';
-    if (p.won) h += '<span class="pwin">' + (p.winInfo ? p.winInfo.names.join('+') : '胡') + '</span>';
+    if (p.won) h += '<span class="pwin">' + esc(p.winInfo ? p.winInfo.names.join('+') : '胡') + '</span>';
     h += '</div>';
     h += '<div class="hand-side">';
     if (p.won) {
@@ -137,7 +145,7 @@
     h += '<span class="pname">你</span>';
     h += '<span class="pscore ' + (p.score > 0 ? 'up' : (p.score < 0 ? 'down' : '')) + '">' + (p.score > 0 ? '+' : '') + p.score + '</span>';
     if (p.lack >= 0) h += '<span class="plack">缺' + R.SUIT_CH[p.lack] + '</span>';
-    if (p.won) h += '<span class="pwin">' + (p.winInfo ? p.winInfo.names.join('+') + ' ' + p.winInfo.score + '分' : '胡') + '</span>';
+    if (p.won) h += '<span class="pwin">' + esc(p.winInfo ? p.winInfo.names.join('+') + ' ' + p.winInfo.score + '分' : '胡') + '</span>';
     h += '<span class="ting" id="tingTip"></span>';
     h += '</div>';
 
@@ -199,7 +207,7 @@
       var el = $(map[s]);
       if (!el) continue;
       var p = G.players[s];
-      var h = '<div class="rlabel">' + (s === 0 ? '你' : p.name.split(' · ')[0]) + '</div><div class="rcards">';
+      var h = '<div class="rlabel">' + esc(s === 0 ? '你' : p.name.split(' · ')[0]) + '</div><div class="rcards">';
       for (var i = 0; i < p.discards.length; i++) {
         var isLast = (G.lastDiscard === p.discards[i] && G.fromSeat === s && i === p.discards.length - 1);
         h += tileHTML(p.discards[i], 'xs' + (isLast ? ' hot' : ''));
@@ -340,8 +348,8 @@
 
   function flashWin(p, res) {
     var ov = $('lackOverlay');
-    ov.innerHTML = '<div class="winflash"><b>' + (p.isHuman ? '你胡了！' : p.name + ' 胡了')
-      + '</b><i>' + res.names.join(' + ') + ' · ' + res.score + ' 分</i></div>';
+    ov.innerHTML = '<div class="winflash"><b>' + (p.isHuman ? '你胡了！' : esc(p.name) + ' 胡了')
+      + '</b><i>' + esc(res.names.join(' + ')) + ' · ' + res.score + ' 分</i></div>';
     ov.className = 'overlay on win';
     setTimeout(function () {
       if (ov.className.indexOf('win') >= 0) { ov.className = 'overlay'; ov.innerHTML = ''; }
@@ -361,8 +369,8 @@
       else if (p.ting) st = '听牌';
       else st = '未听牌';
       h += '<div class="rrow' + (p.won ? ' w' : '') + '">'
-        + '<span class="rn">' + p.name + '</span>'
-        + '<span class="rs">' + st + '</span>'
+        + '<span class="rn">' + esc(p.name) + '</span>'
+        + '<span class="rs">' + esc(st) + '</span>'
         + '<span class="rp ' + (p.score > 0 ? 'up' : (p.score < 0 ? 'down' : '')) + '">' + (p.score > 0 ? '+' : '') + p.score + '</span>'
         + '</div>';
     }
@@ -393,7 +401,7 @@
     if (!el) return;
     var lines = G.events.slice(-4);
     var h = '';
-    for (var i = 0; i < lines.length; i++) h += '<div>' + lines[i] + '</div>';
+    for (var i = 0; i < lines.length; i++) h += '<div>' + esc(lines[i]) + '</div>';
     el.innerHTML = h;
   }
 

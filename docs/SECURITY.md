@@ -110,6 +110,25 @@ WebView 只加载真实存在的 `*.apps.local` 页面（启动器 + 已装应�
 | 无 PIN 向 `PUT /upload` | `403 Forbidden` |
 | 带 PIN 上传（同一 Wi-Fi 模拟） | 正常安装，sha256/来源入档 |
 
+## 内置应用安全扫描（v1.1.2，血战到底麻将）
+
+逐文件扫描 `apps/mahjong/`（rule/ai/game/ui/voice/boot + index.html + manifest）：
+
+| 检查项 | 结论 |
+|---|---|
+| `innerHTML` 插值（14 处） | ✅ 已全部加 `esc()` 转义。插值源（玩家名/牌名/番型名/事件）当前均为内部常量，转义属纵深防御 |
+| `eval` / `new Function` / 内联事件 / `document.write` | ✅ 无 |
+| 外部网络（fetch / XHR / WebSocket / window.open / 外跳） | ✅ 无，`connect-src 'none'` 收口 |
+| `localStorage` | ✅ 唯一键 `mj_level`，`parseInt` + 白名单 0/1/2，无注入面 |
+| 语音资源路径 | ✅ 固定前缀 `voice/` + 内部白名单名（p0-p26 / a_*），无路径拼接注入 |
+| `data-tile` 事件委托 | ✅ `parseInt` + `isNaN` 拒绝，仅数字进入游戏逻辑 |
+| 存储隔离 | ✅ 每包独立 origin，localStorage 天然隔离 |
+| 游戏逻辑滥用 | ✅ 人类出牌过缺门硬校验（v1.0.2），AI 决策无用户输入 |
+| 定时器 | ✅ `later()` 带 over 保护，restart 全量清理，无重复触发面 |
+| **页面 CSP** | ⚠️ → ✅ v1.1.2 修复：此前宿主只给启动器加 CSP，应用包页面裸奔。宿主新增 `manifest.csp` 可选声明（`cspOf()` 缓存 + 字符白名单防响应头注入），麻将声明严格 CSP：脚本限 self、connect-src none、media self |
+
+配套宿主改动（v1.1.2）：`AppStore.cspOf()` + `MainActivity` 应用资源分支按 HTML 响应附加 CSP 头与 `Referrer-Policy: no-referrer`。
+
 ## 上报漏洞
 
 发现安全问题请开 [issue](https://github.com/joeyjiaojg/openmini/issues) 或私聊仓库作者，
