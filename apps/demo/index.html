@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>弹珠屏保</title>
+<style>
+html,body{margin:0;height:100%;background:#0E1420;overflow:hidden}
+canvas{display:block}
+.tip{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);
+text-align:center;font-size:11px;color:#3D5A80;font-family:sans-serif;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="tip">点一下屏幕加一颗弹珠</div>
+<script>
+(function () {
+  var cv = document.getElementById('c');
+  var ctx = cv.getContext('2d');
+  var balls = [];
+  var COLORS = ['#C9A15A', '#5DCAA5', '#D4537E', '#378ADD', '#97C459'];
+
+  function resize() {
+    cv.width = window.innerWidth * window.devicePixelRatio;
+    cv.height = window.innerHeight * window.devicePixelRatio;
+    cv.style.width = window.innerWidth + 'px';
+    cv.style.height = window.innerHeight + 'px';
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function spawn(x, y) {
+    balls.push({
+      x: x === undefined ? Math.random() * cv.width : x,
+      y: y === undefined ? Math.random() * cv.height * 0.5 : y,
+      vx: (Math.random() - 0.5) * 14,
+      vy: (Math.random() - 0.5) * 14,
+      r: 10 + Math.random() * 22,
+      c: COLORS[balls.length % COLORS.length]
+    });
+    if (balls.length > 40) balls.shift();
+  }
+
+  for (var i = 0; i < 7; i++) spawn();
+
+  cv.addEventListener('touchstart', function (e) {
+    var t = e.touches[0];
+    spawn(t.clientX * window.devicePixelRatio, t.clientY * window.devicePixelRatio);
+  }, false);
+  cv.addEventListener('mousedown', function (e) {
+    spawn(e.clientX * window.devicePixelRatio, e.clientY * window.devicePixelRatio);
+  }, false);
+
+  function step() {
+    var w = cv.width, h = cv.height;
+    ctx.fillStyle = '#0E1420';
+    ctx.fillRect(0, 0, w, h);
+    for (var i = 0; i < balls.length; i++) {
+      var b = balls[i];
+      b.x += b.vx; b.y += b.vy;
+      if (b.x < b.r || b.x > w - b.r) { b.vx = -b.vx; b.x = Math.max(b.r, Math.min(w - b.r, b.x)); }
+      if (b.y < b.r || b.y > h - b.r) { b.vy = -b.vy; b.y = Math.max(b.r, Math.min(h - b.r, b.y)); }
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fillStyle = b.c;
+      ctx.globalAlpha = 0.85;
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(step);
+  }
+  step();
+})();
+</script>
+</body>
+</html>

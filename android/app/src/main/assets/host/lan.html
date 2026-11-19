@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>小游盒 · 局域网装包</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 40px 24px;
+  background: #14110E; color: #EDE4D3;
+  font-family: -apple-system, "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
+  display: flex; flex-direction: column; align-items: center;
+}
+.wrap { width: 100%; max-width: 560px; }
+h1 { margin: 0 0 6px; font-size: 20px; font-weight: 500; letter-spacing: 2px; color: #E8D9B8; }
+.sub { margin: 0 0 28px; font-size: 12px; color: #8C8070; }
+#zone {
+  padding: 54px 20px; text-align: center;
+  border: 1px dashed rgba(201,161,90,.35); border-radius: 16px;
+  background: rgba(201,161,90,.04); cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+#zone.hot { background: rgba(201,161,90,.14); border-color: rgba(201,161,90,.8); }
+#zone .big { font-size: 15px; color: #C9A15A; margin-bottom: 8px; }
+#zone .small { font-size: 12px; color: #6E6355; line-height: 1.7; }
+#bar { height: 4px; margin-top: 18px; border-radius: 2px; background: rgba(201,161,90,.14); overflow: hidden; display: none; }
+#bar.on { display: block; }
+#bar i { display: block; height: 100%; width: 0; background: #C9A15A; transition: width .12s linear; }
+#log { margin-top: 18px; font-size: 13px; line-height: 1.8; color: #8C8070; min-height: 24px; }
+#log b { color: #C9A15A; font-weight: 500; }
+#log .err { color: #E4857A; }
+ol { margin: 32px 0 0; padding-left: 20px; font-size: 12px; line-height: 2; color: #6E6355; }
+code { color: #9A8B72; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>局域网装包</h1>
+  <p class="sub">把这个 zip 拖进来，手机上就装好了</p>
+
+  <div id="zone">
+    <div class="big">拖文件到这里，或点一下选择</div>
+    <div class="small">支持 .zip 应用包 · 上限 40MB</div>
+  </div>
+  <div id="bar"><i></i></div>
+  <div id="log"></div>
+
+  <ol>
+    <li>包里必须有 <code>manifest.json</code>（id / name / version / entry）</li>
+    <li>入口默认 <code>index.html</code>，相对路径随便写</li>
+    <li>同名 id 会直接覆盖升级，存档不丢</li>
+  </ol>
+</div>
+
+<input id="file" type="file" accept=".zip,application/zip" style="display:none">
+<script>
+(function () {
+  var zone = document.getElementById('zone');
+  var file = document.getElementById('file');
+  var bar = document.getElementById('bar');
+  var fill = bar.querySelector('i');
+  var log = document.getElementById('log');
+
+  function say(html, err) {
+    log.innerHTML = err ? '<span class="err">' + html + '</span>' : html;
+  }
+
+  zone.addEventListener('click', function () { file.click(); });
+  zone.addEventListener('dragover', function (e) { e.preventDefault(); zone.className = 'hot'; });
+  zone.addEventListener('dragleave', function () { zone.className = ''; });
+  zone.addEventListener('drop', function (e) {
+    e.preventDefault();
+    zone.className = '';
+    if (e.dataTransfer.files && e.dataTransfer.files.length) send(e.dataTransfer.files[0]);
+  });
+  file.addEventListener('change', function () {
+    if (file.files.length) send(file.files[0]);
+    file.value = '';
+  });
+
+  function send(f) {
+    if (!/\.zip$/i.test(f.name)) { say('只认 .zip 文件', true); return; }
+    say('正在上传 ' + f.name + ' …');
+    bar.className = 'on';
+    fill.style.width = '0%';
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('PUT', '/upload?name=' + encodeURIComponent(f.name), true);
+    xhr.setRequestHeader('Content-Type', 'application/zip');
+    xhr.upload.onprogress = function (e) {
+      if (e.lengthComputable) fill.style.width = Math.round(e.loaded * 100 / e.total) + '%';
+    };
+    xhr.onload = function () {
+      bar.className = '';
+      var r = {};
+      try { r = JSON.parse(xhr.responseText); } catch (err) { r = {}; }
+      if (r.ok) {
+        say('<b>' + (r.msg || '已安装') + '</b>　回到手机上的小游盒就能看到了');
+      } else {
+        say(r.msg || ('上传失败 HTTP ' + xhr.status), true);
+      }
+    };
+    xhr.onerror = function () {
+      bar.className = '';
+      say('连接断了，确认手机和电脑在同一个 WiFi 下', true);
+    };
+    xhr.send(f);
+  }
+})();
+</script>
+</body>
+</html>
