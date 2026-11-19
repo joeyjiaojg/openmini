@@ -37,7 +37,7 @@ code { color: #9A8B72; }
 <body>
 <div class="wrap">
   <h1>局域网装包</h1>
-  <p class="sub">把这个 zip 拖进来，手机上就装好了</p>
+  <p class="sub">把这个 zip 拖进来，手机上就装好了 · 地址里的 6 位数字是本次 PIN，5 分钟没操作自动关闭</p>
 
   <div id="zone">
     <div class="big">拖文件到这里，或点一下选择</div>
@@ -61,9 +61,17 @@ code { color: #9A8B72; }
   var bar = document.getElementById('bar');
   var fill = bar.querySelector('i');
   var log = document.getElementById('log');
+  // 页面地址形如 /123456/ ，上传接口要挂在同一层，PIN 才不会丢
+  var BASE = location.pathname;
 
-  function say(html, err) {
-    log.innerHTML = err ? '<span class="err">' + html + '</span>' : html;
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function say(text, err, bold) {
+    var body = bold ? '<b>' + esc(text) + '</b>' : esc(text);
+    log.innerHTML = err ? '<span class="err">' + body + '</span>' : body;
   }
 
   zone.addEventListener('click', function () { file.click(); });
@@ -86,7 +94,7 @@ code { color: #9A8B72; }
     fill.style.width = '0%';
 
     var xhr = new XMLHttpRequest();
-    xhr.open('PUT', '/upload?name=' + encodeURIComponent(f.name), true);
+    xhr.open('PUT', BASE + 'upload?name=' + encodeURIComponent(f.name), true);
     xhr.setRequestHeader('Content-Type', 'application/zip');
     xhr.upload.onprogress = function (e) {
       if (e.lengthComputable) fill.style.width = Math.round(e.loaded * 100 / e.total) + '%';
@@ -96,7 +104,7 @@ code { color: #9A8B72; }
       var r = {};
       try { r = JSON.parse(xhr.responseText); } catch (err) { r = {}; }
       if (r.ok) {
-        say('<b>' + (r.msg || '已安装') + '</b>　回到手机上的小盒子就能看到了');
+        say((r.msg || '已安装') + '　回到手机上的小盒子就能看到了', false, true);
       } else {
         say(r.msg || ('上传失败 HTTP ' + xhr.status), true);
       }

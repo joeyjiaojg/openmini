@@ -47,7 +47,7 @@ OpenMini 把**运行时**和**内容**拆开：
 
 ## 下载 / 使用
 
-从 [Releases](https://github.com/joeyjiaojg/openmini/releases) 下载 `OpenMini-v1.0.1.apk`，装到手机上（minSdk 21 / Android 5.0+）。首次打开**默认已装好「楚汉象棋」**（人机对战 / 机器对战观战 / 三档难度），拿来就能玩。
+从 [Releases](https://github.com/joeyjiaojg/openmini/releases) 下载 `OpenMini-v1.1.0.apk`，装到手机上（minSdk 21 / Android 5.0+）。首次打开**默认已装好「楚汉象棋」**（人机对战 / 机器对战观战 / 三档难度），拿来就能玩。
 
 装新应用：
 
@@ -55,7 +55,7 @@ OpenMini 把**运行时**和**内容**拆开：
 |---|---|---|
 | **粘贴链接** | 盒子右下「＋ 装一个应用」→ 链接页签 → 粘 zip 直链 | 把包丢 GitHub Release / 网盘，朋友粘链接就装 |
 | **手机选文件** | 同上 → 文件页签 → 系统文件选择器选 zip | 微信/QQ 收到 zip；装过一次后直接点 zip 文件也能「用 OpenMini 打开」 |
-| **局域网** | 同上 → 局域网页签 → 电脑浏览器打开 `http://<手机IP>:8089`，拖 zip 进去 | 开发调试最快，改完拖一下就更新 |
+| **局域网** | 同上 → 局域网页签 → 电脑浏览器打开面板里显示的完整地址（含 6 位 PIN），拖 zip 进去 | 开发调试最快；5 分钟无操作自动关闭，防蹭网 |
 
 长按应用卡片可删除（存档一起清掉，因为存在该 origin 下）。
 
@@ -163,6 +163,16 @@ docs/                             包格式说明、截图
 - **局域网服务**：`ServerSocket` 绑 0.0.0.0，8089 起向后试 8 个端口；协议故意用 `PUT + 原始二进制`，按 `Content-Length` 读 body，省掉 multipart 解析；浏览器端 `XMLHttpRequest` 自带上传进度。
 - **不要叫 JS 全局变量 `history` / `location` / `top` / `name`**：严格模式下给 window 只读属性赋值直接抛 TypeError，脚本一启动就死，表现为「所有按钮都没反应」。
 - 自动化测试时输入法弹出会改变 Web 页面布局坐标：`input tap` 前先 `keyevent 4` 收键盘，或改用 `uiautomator dump` 拿真实 bounds（WebView 内部元素也会出现在 dump 里）。
+
+## 安全模型
+
+装进来的包**拿不到任何宿主能力**：JS 桥走 `prompt()` 通道且只接受来自启动器
+origin 的调用；WebView 只在 `*.apps.local` 内导航，外跳一律交给系统浏览器；
+启动器渲染全程 `createElement`（包的 name/icon 当纯文本）；zip 有 zip-slip、
+条目数、体积、路径白名单四重校验；局域网上传必须带 6 位 PIN 且 5 分钟空闲自动关闭；
+`allowBackup=false` 挡 adb/云备份。
+
+完整威胁模型、防线清单与红队实测记录见 [docs/SECURITY.md](docs/SECURITY.md)。
 
 ## 已知限制
 

@@ -14,6 +14,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -25,11 +27,23 @@ import java.util.zip.ZipInputStream;
 /**
  * 应用包仓库：包存在 files/apps/&lt;id&gt;/ 下，每个包必须带 manifest.json。
  * 升级安装只替换目录，不动 WebView 的 localStorage —— 存档自然保留。
+ *
+ * 所有来自包 manifest 的字段都当作不可信输入处理：
+ *  - id / entry / icon 必须过白名单正则，且路径不得逃出包目录
+ *  - name 去掉控制字符并截断
+ *  - zip 条目数、解压总量都有上限
+ *  - 记录每个包的 sha256 与安装来源，便于事后审计
  */
 public class AppStore {
 
     private static final String TAG = "box";
     private static final long MAX_UNZIP = 40L * 1024 * 1024;
+    private static final int MAX_ENTRIES = 2000;
+    private static final int MAX_PATH = 200;
+    static final String ID_RE = "[a-z0-9][a-z0-9_-]{0,39}";
+    /** host 是启动器的虚拟域名，包不能占用 */
+    private static final String RESERVED_ID = "host";
+    private static final String PATH_RE = "[A-Za-z0-9._/-]{1,180}";
 
     final Context ctx;
     final File root;
@@ -42,7 +56,12 @@ public class AppStore {
         stageRoot = new File(c.getCacheDir(), "stage");
     }
 
+    public boolean validId(String id) {
+        return id != null && id.matches(ID_RE) && !RESERVED_ID.equals(id);
+    }
+
     public File dir(String id) {
+        if (!validId(id)) throw new IllegalArgumentException("bad id");
         return new File(root, id);
     }
 
@@ -57,7 +76,7 @@ public class AppStore {
                     if (!n.endsWith(".zip")) continue;
                     InputStream in = ctx.getAssets().open("apps/" + n);
                     try {
-                        Result r = install(in, n);
+                        Result r = install(in, "builtin");
                         Log.i(TAG, "seed " + n + " -> " + r.msg);
                     } catch (Exception e) {
                         Log.w(TAG, "seed " + n + " failed", e);
@@ -102,7 +121,10 @@ public class AppStore {
         try {
             deleteRec(stage);
             if (!stage.mkdirs()) return fail("无法创建临时目录");
-            unzip(in, stage);
+
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            unzip(new DigestInputStream(in, md), stage);
+            String sha = hex(md.digest());
 
             File src = stage;
             if (!new File(src, "manifest.json").isFile()) {
@@ -123,19 +145,29 @@ public class AppStore {
             }
 
             String id = m.optString("id", "").trim().toLowerCase(Locale.US);
-            if (!id.matches("[a-z0-9][a-z0-9_-]{0,39}")) {
-                return fail("manifest 的 id 只能用 0-9、a-z、- 和 _（最长 40）");
+            if (!validId(id)) {
+                return fail("manifest 的 id 只能用 0-9、a-z、- 和 _（最长 40，host 保留）");
             }
-            String name = m.optString("name", "").trim();
-            if (name.length() == 0) name = id;
-            String entry = m.optString("entry", "index.html").trim();
-            while (entry.startsWith("/")) entry = entry.substring(1);
-            if (entry.length() == 0) entry = "index.html";
+
+            String name = cleanName(m.optString("name", ""), id);
+
+            String entry = safeRelPath(m.optString("entry", "index.html"));
+            if (entry == null) return fail("入口路径非法");
             if (!new File(src, entry).isFile()) return fail("入口文件不存在: " + entry);
+
+            String icon = null;
+            if (m.has("icon")) {
+                String ic = safeRelPath(m.optString("icon", ""));
+                if (ic != null && new File(src, ic).isFile()) icon = ic;
+            }
 
             m.put("id", id);
             m.put("name", name);
             m.put("entry", entry);
+            if (icon == null) m.remove("icon");
+            else m.put("icon", icon);
+            m.put("sha256", sha);
+            m.put("source", hint == null ? "" : hint);
 
             File dest = dir(id);
             boolean upgrade = dest.exists();
@@ -153,6 +185,8 @@ public class AppStore {
             deleteRec(old);
             deleteRec(stage);
 
+            rememberMeta(id, sha, hint, dirSize(dest));
+
             Result r = new Result();
             r.ok = true;
             r.msg = (upgrade ? "已更新 " : "已安装 ") + name;
@@ -166,13 +200,62 @@ public class AppStore {
         }
     }
 
+    /** 包名只用于展示：去控制字符、限长 */
+    private static String cleanName(String raw, String fallback) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < raw.length() && sb.length() < 40; i++) {
+            char c = raw.charAt(i);
+            if (c >= 0x20 && c != 0x7f) sb.append(c);
+        }
+        String s = sb.toString().trim();
+        return s.length() == 0 ? fallback : s;
+    }
+
+    /** 相对路径白名单：不许绝对路径、不许 ..、不许反斜杠 */
+    static String safeRelPath(String raw) {
+        if (raw == null) return null;
+        String p = raw.trim().replace('\\', '/');
+        while (p.startsWith("/")) p = p.substring(1);
+        if (p.length() == 0 || p.length() > MAX_PATH) return null;
+        if (!p.matches(PATH_RE)) return null;
+        if (p.contains("..")) return null;
+        for (String seg : p.split("/")) {
+            if (seg.length() == 0 || seg.startsWith(".")) return null;
+        }
+        return p;
+    }
+
+    private void rememberMeta(String id, String sha, String source, long bytes) {
+        try {
+            SharedPreferences sp = ctx.getSharedPreferences("pkgmeta", Context.MODE_PRIVATE);
+            JSONObject o = new JSONObject();
+            o.put("sha256", sha);
+            o.put("source", source == null ? "" : source);
+            o.put("bytes", bytes);
+            o.put("at", System.currentTimeMillis());
+            sp.edit().putString(id, o.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** 供界面/审计用：某包的 sha256 与来源 */
+    public JSONObject meta(String id) {
+        try {
+            SharedPreferences sp = ctx.getSharedPreferences("pkgmeta", Context.MODE_PRIVATE);
+            String s = sp.getString(id, null);
+            return s == null ? null : new JSONObject(s);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     public String listJson() {
         JSONArray arr = new JSONArray();
         File[] kids = root.listFiles();
         List<File> dirs = new ArrayList<File>();
         if (kids != null) {
             for (File f : kids) {
-                if (f.isDirectory() && !f.getName().startsWith(".")) dirs.add(f);
+                if (f.isDirectory() && !f.getName().startsWith(".") && validId(f.getName())) dirs.add(f);
             }
         }
         Collections.sort(dirs, new Comparator<File>() {
@@ -185,6 +268,7 @@ public class AppStore {
                 JSONObject m = new JSONObject(readText(new File(d, "manifest.json")));
                 m.put("id", d.getName());
                 m.put("bytes", dirSize(d));
+                m.put("name", cleanName(m.optString("name", ""), d.getName()));
                 arr.put(m);
             } catch (Exception ignored) {
                 // 缺 manifest 的目录直接跳过，不阻塞列表
@@ -197,6 +281,7 @@ public class AppStore {
         try {
             JSONObject m = new JSONObject(readText(new File(dir(id), "manifest.json")));
             m.put("id", id);
+            m.put("name", cleanName(m.optString("name", ""), id));
             return m;
         } catch (Exception e) {
             return null;
@@ -205,14 +290,18 @@ public class AppStore {
 
     public String entryOf(String id) {
         JSONObject m = get(id);
-        String e = m == null ? null : m.optString("entry", "index.html");
-        if (e == null || e.length() == 0) e = "index.html";
-        while (e.startsWith("/")) e = e.substring(1);
-        return e;
+        String e = m == null ? null : safeRelPath(m.optString("entry", "index.html"));
+        return e == null ? "index.html" : e;
     }
 
     public boolean remove(String id) {
-        return deleteRec(dir(id));
+        if (!validId(id)) return false;
+        try {
+            ctx.getSharedPreferences("pkgmeta", Context.MODE_PRIVATE).edit().remove(id).apply();
+            return deleteRec(dir(id));
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private void unzip(InputStream in, File dest) throws IOException {
@@ -220,10 +309,13 @@ public class AppStore {
         ZipInputStream zis = new ZipInputStream(new BufferedInputStream(in));
         byte[] buf = new byte[16384];
         long total = 0;
+        int count = 0;
         ZipEntry e;
         while ((e = zis.getNextEntry()) != null) {
+            if (++count > MAX_ENTRIES) throw new IOException("包内文件过多");
             String nm = e.getName().replace('\\', '/');
             if (nm.length() == 0 || nm.startsWith("__MACOSX/") || nm.equals("__MACOSX")) continue;
+            if (nm.length() > MAX_PATH || nm.indexOf('\0') >= 0) throw new IOException("包内路径非法: " + nm);
             File out = new File(dest, nm);
             String cp = out.getCanonicalPath();
             if (!cp.startsWith(rootPath)) throw new IOException("包内路径非法: " + nm);
@@ -245,6 +337,16 @@ public class AppStore {
                 closeQuietly(fo);
             }
         }
+    }
+
+    private static String hex(byte[] b) {
+        StringBuilder sb = new StringBuilder(b.length * 2);
+        for (byte x : b) {
+            String h = Integer.toHexString(x & 0xff);
+            if (h.length() == 1) sb.append('0');
+            sb.append(h);
+        }
+        return sb.toString();
     }
 
     static String readText(File f) throws IOException {

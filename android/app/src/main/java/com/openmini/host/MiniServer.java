@@ -15,12 +15,20 @@ import java.net.InetSocketAddress;
 import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
+import java.security.SecureRandom;
 import java.util.Collections;
 import java.util.Locale;
 
 /**
  * 局域网装包通道：手机开一个小 HTTP 服务，电脑浏览器打开就能拖 zip 进去。
  * 上传接口故意用 PUT + 原始二进制，省掉 multipart 解析（几十行省成几行）。
+ *
+ * 安全设计（这是个默认对局域网开放的上传口，必须设防）：
+ *  - 每次开启生成 6 位随机 PIN，URL 里必须带对，否则一律 403；
+ *  - 只接受内网/本机来源地址（公网 IP 直接断开）；
+ *  - 5 分钟没有任何请求自动关闭；
+ *  - 单次上传上限 40MB，包内容仍有 AppStore 的校验兜底。
  */
 public class MiniServer {
 
@@ -29,13 +37,16 @@ public class MiniServer {
     }
 
     private static final long MAX_BODY = 40L * 1024 * 1024;
+    private static final long IDLE_TIMEOUT = 5 * 60 * 1000L;
 
     private final AppStore store;
     private final int basePort;
     private ServerSocket ss;
     private Thread worker;
     private volatile boolean running;
+    private volatile long lastActive = 0;
     private int port;
+    private String pin = "";
     private Listener listener;
 
     public MiniServer(AppStore store, int basePort) {
@@ -55,8 +66,17 @@ public class MiniServer {
         return port;
     }
 
+    public String pin() {
+        return pin;
+    }
+
+    /** 带 PIN 的完整地址，直接给用户抄进电脑浏览器 */
+    public String url() {
+        return "http://" + localIp() + ":" + port + "/" + pin + "/";
+    }
+
     public String start() throws IOException {
-        if (running) return "http://" + localIp() + ":" + port;
+        if (running) return url();
         IOException last = null;
         for (int i = 0; i < 8; i++) {
             int p = basePort + i;
@@ -64,6 +84,7 @@ public class MiniServer {
                 ServerSocket s = new ServerSocket();
                 s.setReuseAddress(true);
                 s.bind(new InetSocketAddress("0.0.0.0", p));
+                s.setSoTimeout(60000);
                 ss = s;
                 port = p;
                 break;
@@ -73,6 +94,8 @@ public class MiniServer {
         }
         if (ss == null) throw last == null ? new IOException("端口被占用") : last;
 
+        pin = newPin();
+        lastActive = System.currentTimeMillis();
         running = true;
         worker = new Thread(new Runnable() {
             public void run() {
@@ -81,7 +104,7 @@ public class MiniServer {
         }, "box-lan");
         worker.setDaemon(true);
         worker.start();
-        return "http://" + localIp() + ":" + port;
+        return url();
     }
 
     public void stop() {
@@ -94,6 +117,14 @@ public class MiniServer {
             ss = null;
         }
         worker = null;
+        pin = "";
+    }
+
+    private static String newPin() {
+        SecureRandom r = new SecureRandom();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 6; i++) sb.append((char) ('0' + r.nextInt(10)));
+        return sb.toString();
     }
 
     private void loop() {
@@ -102,6 +133,12 @@ public class MiniServer {
             try {
                 s = ss.accept();
                 handle(s);
+            } catch (SocketTimeoutException te) {
+                if (System.currentTimeMillis() - lastActive > IDLE_TIMEOUT) {
+                    // 空闲太久，自动收回这个上传口
+                    stop();
+                    break;
+                }
             } catch (Exception e) {
                 if (!running) break;
             } finally {
@@ -117,6 +154,15 @@ public class MiniServer {
 
     private void handle(Socket s) {
         try {
+            // 只服务内网（同一 Wi-Fi / 热点），拒绝任何公网来源
+            InetAddress peer = s.getInetAddress();
+            boolean local = peer != null && (peer.isLoopbackAddress() || peer.isSiteLocalAddress()
+                    || peer.isLinkLocalAddress());
+            if (!local) {
+                respond(s.getOutputStream(), 403, "text/plain; charset=utf-8", "只接受局域网访问");
+                return;
+            }
+
             s.setSoTimeout(30000);
             InputStream in = new BufferedInputStream(s.getInputStream());
             OutputStream out = new BufferedOutputStream(s.getOutputStream());
@@ -137,6 +183,21 @@ public class MiniServer {
             String method = first.length > 0 ? first[0] : "GET";
             String target = first.length > 1 ? first[1] : "/";
 
+            if ("OPTIONS".equals(method)) {
+                respond(out, 204, "text/plain; charset=utf-8", "");
+                return;
+            }
+
+            // 路径必须以 /<pin>/ 开头，否则连页面都不给看
+            String prefix = "/" + pin + "/";
+            if (pin.length() == 0 || !target.startsWith(prefix)) {
+                respond(out, 403, "text/plain; charset=utf-8",
+                        "需要正确的访问地址（地址里带 PIN）。\n在小盒子的安装面板里抄完整地址。");
+                return;
+            }
+            String rest = target.substring(prefix.length() - 1); // 保留开头的 "/"
+            lastActive = System.currentTimeMillis();
+
             long length = 0;
             for (int i = 1; i < lines.length; i++) {
                 String line = lines[i];
@@ -152,7 +213,7 @@ public class MiniServer {
                 }
             }
 
-            if ("PUT".equals(method) && target.startsWith("/upload")) {
+            if ("PUT".equals(method) && rest.startsWith("/upload")) {
                 if (length <= 0 || length > MAX_BODY) {
                     respond(out, 400, "text/plain; charset=utf-8", "文件为空或超过 40MB");
                     return;
@@ -188,11 +249,6 @@ public class MiniServer {
                 return;
             }
 
-            if ("OPTIONS".equals(method)) {
-                respond(out, 204, "text/plain; charset=utf-8", "");
-                return;
-            }
-
             byte[] page = readAsset("host/lan.html");
             if (page == null) page = "<h1>lan.html missing</h1>".getBytes("UTF-8");
             respondBytes(out, 200, "text/html; charset=utf-8", page);
@@ -223,14 +279,14 @@ public class MiniServer {
     }
 
     private void respondBytes(OutputStream out, int code, String type, byte[] body) throws IOException {
-        String status = code == 200 ? "OK" : code == 204 ? "No Content" : code == 400 ? "Bad Request" : "OK";
+        String status = code == 200 ? "OK" : code == 204 ? "No Content"
+                : code == 400 ? "Bad Request" : code == 403 ? "Forbidden" : "OK";
         StringBuilder h = new StringBuilder();
         h.append("HTTP/1.1 ").append(code).append(' ').append(status).append("\r\n");
         h.append("Content-Type: ").append(type).append("\r\n");
         h.append("Content-Length: ").append(body.length).append("\r\n");
         h.append("Cache-Control: no-store\r\n");
-        h.append("Access-Control-Allow-Origin: *\r\n");
-        h.append("Access-Control-Allow-Methods: GET, PUT, OPTIONS\r\n");
+        h.append("X-Content-Type-Options: nosniff\r\n");
         h.append("Connection: close\r\n\r\n");
         out.write(h.toString().getBytes("UTF-8"));
         if (body.length > 0) out.write(body);

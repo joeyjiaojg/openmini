@@ -22,8 +22,39 @@
     t._timer = setTimeout(function () { t.className = 'toast'; }, 2000);
   }
 
+  // 宿主桥：走 prompt() 通道，只有 https://host.apps.local 这个页面能拿到能力。
+  // 装进来的应用即使自己调 prompt，也只会收到 forbidden。
+  function inHost() {
+    return location.protocol === 'https:' &&
+      /(^|\.)host\.apps\.local$/i.test(location.hostname);
+  }
+
+  function call(m, a) {
+    try {
+      var r = prompt('__om__' + JSON.stringify({ m: m, a: a === undefined ? null : a }));
+      return r == null ? '' : r;
+    } catch (e) {
+      return '';
+    }
+  }
+
+  var api = {
+    apps: function () { return call('apps'); },
+    meta: function () { return call('meta'); },
+    installUrl: function (u) { call('installUrl', u); },
+    pick: function () { call('pick'); },
+    remove: function (id) { call('remove', id); },
+    open: function (id) { call('open', id); },
+    home: function () { call('home'); },
+    back: function () { call('back'); },
+    serverStart: function () { return call('serverStart'); },
+    serverStop: function () { call('serverStop'); },
+    setOverlay: function (v) { call('setOverlay', !!v); },
+    toastMsg: function (m) { call('toastMsg', m); }
+  };
+
   function host() {
-    return (typeof Box !== 'undefined' && Box) ? Box : null;
+    return inHost() ? api : null;
   }
 
   // ---------- 列表 ----------
@@ -36,30 +67,55 @@
     render();
   }
 
-  function iconHtml(a) {
-    var name = a.name || a.id;
-    var letter = esc(String(name).charAt(0));
+  // 全部用 createElement 建节点：包 manifest 里的 name/icon 都当不可信文本处理，
+  // 不进 innerHTML，也就没有属性注入/脚本注入的可能。
+  function iconNode(a) {
+    var name = String(a.name || a.id || '?');
+    var wrap = document.createElement('div');
+    wrap.className = 'ico-wrap';
+
+    var letter = document.createElement('span');
+    letter.className = 'ico-txt';
+    letter.textContent = name.charAt(0).toUpperCase();
+
     if (a.icon) {
-      var src = 'https://' + a.id + '.apps.local/' + String(a.icon).replace(/^\//, '');
-      return '<div class="ico-wrap">'
-        + '<img class="ico" alt="" src="' + esc(src) + '" onerror="this.style.display=\'none\';this.parentNode.querySelector(\'.ico-txt\').style.display=\'flex\'">'
-        + '<span class="ico-txt" style="display:none">' + letter + '</span>'
-        + '</div>';
+      var img = document.createElement('img');
+      img.className = 'ico';
+      img.alt = '';
+      img.onerror = function () {
+        img.style.display = 'none';
+        letter.style.display = 'flex';
+      };
+      img.src = 'https://' + a.id + '.apps.local/' + String(a.icon).replace(/^\//, '');
+      letter.style.display = 'none';
+      wrap.appendChild(img);
+    } else {
+      letter.style.display = 'flex';
     }
-    return '<div class="ico-wrap"><span class="ico-txt" style="display:flex">' + letter + '</span></div>';
+    wrap.appendChild(letter);
+    return wrap;
   }
 
   function render() {
     var g = $('grid');
-    g.innerHTML = '';
+    while (g.firstChild) g.removeChild(g.firstChild);
     $('empty').style.display = apps.length ? 'none' : 'block';
     for (var i = 0; i < apps.length; i++) {
       (function (a) {
         var card = document.createElement('div');
         card.className = 'card';
-        card.innerHTML = iconHtml(a)
-          + '<div class="nm">' + esc(a.name || a.id) + '</div>'
-          + '<div class="ver">' + (a.version ? 'v' + esc(a.version) : '') + '</div>';
+        card.appendChild(iconNode(a));
+
+        var nm = document.createElement('div');
+        nm.className = 'nm';
+        nm.textContent = String(a.name || a.id || '');
+        card.appendChild(nm);
+
+        var ver = document.createElement('div');
+        ver.className = 'ver';
+        ver.textContent = a.version ? 'v' + String(a.version) : '';
+        card.appendChild(ver);
+
         bindCard(card, a);
         g.appendChild(card);
       })(apps[i]);
