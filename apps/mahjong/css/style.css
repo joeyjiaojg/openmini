@@ -130,22 +130,55 @@ html, body {
 }
 .river .rcards { display: flex; flex-wrap: wrap; align-content: flex-start; }
 
-#centerInfo {
-  position: absolute; top: 50%; left: 50%;
-  -webkit-transform: translate(-50%, -50%);
-  transform: translate(-50%, -50%);
-  padding: 5px 16px; border-radius: 14px;
-  background: rgba(4, 24, 18, .88);
-  border: 1px solid rgba(201, 161, 90, .55);
-  color: #e2c98d; font-size: 15px; letter-spacing: 1px;
-  z-index: 8; white-space: nowrap;
-  display: flex; align-items: baseline;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, .4);
+/* 左上角 HUD：剩余张数 + 难度 + 退出，不挡牌河 */
+#hud {
+  position: absolute; top: 6px; left: 8px; z-index: 12;
+  display: flex; align-items: center; gap: 6px;
 }
-#centerInfo .clabel { font-size: 11px; color: #9ab387; margin: 0 4px; }
-#centerInfo b { font-size: 22px; font-weight: 700; color: #ffd97a; min-width: 30px; text-align: center; }
+#hud.hidden { display: none; }
+#centerInfo {
+  padding: 4px 10px; border-radius: 11px;
+  background: rgba(4, 24, 18, .85);
+  border: 1px solid rgba(201, 161, 90, .5);
+  color: #e2c98d; font-size: 13px; letter-spacing: .5px;
+  white-space: nowrap; display: flex; align-items: baseline;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+}
+#centerInfo .clabel { font-size: 10px; color: #9ab387; margin: 0 3px; }
+#centerInfo b { font-size: 17px; font-weight: 700; color: #ffd97a; min-width: 24px; text-align: center; }
 #centerInfo.low { border-color: rgba(224, 80, 60, .7); }
 #centerInfo.low b { color: #ff8a70; }
+
+.hud-btn {
+  height: 30px; padding: 0 11px; border-radius: 8px;
+  background: rgba(4, 24, 18, .85);
+  border: 1px solid rgba(201, 161, 90, .5);
+  color: #e2c98d; font-family: inherit; font-size: 12px; font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+}
+.hud-btn:active { -webkit-transform: scale(.95); transform: scale(.95); }
+#btnHudQuit { color: #e0a89a; border-color: rgba(200, 110, 90, .45); }
+
+.hud-level {
+  display: none; position: absolute; top: 36px; left: 0;
+  flex-direction: column; padding: 6px; gap: 5px;
+  background: rgba(10, 34, 25, .97);
+  border: 1px solid rgba(201, 161, 90, .5);
+  border-radius: 9px; box-shadow: 0 6px 18px rgba(0, 0, 0, .55);
+  z-index: 14;
+}
+.hud-level.on { display: flex; }
+.hud-level button {
+  min-width: 72px; height: 32px; border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  background: rgba(255, 255, 255, .06); color: #9ab3a5;
+  font-family: inherit; font-size: 12px; font-weight: 600;
+}
+.hud-level button.on {
+  background: linear-gradient(180deg, #3d8fd1, #22608f);
+  border-color: rgba(120, 190, 240, .5); color: #fff;
+}
+.hud-level button:active { -webkit-transform: scale(.96); transform: scale(.96); }
 
 /* ================= 操作按钮 ================= */
 .actions {
@@ -337,6 +370,7 @@ html, body {
   .pinfo .pscore { font-size: 12px; }
   .seat-left .pinfo, .seat-right .pinfo { font-size: 11px; }
   .river .rlabel { font-size: 10px; }
-  #centerInfo .clabel { font-size: 12px; }
-  #centerInfo b { font-size: 24px; }
+  #centerInfo .clabel { font-size: 11px; }
+  #centerInfo b { font-size: 20px; }
+  .hud-btn { height: 32px; font-size: 13px; padding: 0 13px; }
 }

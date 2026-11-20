@@ -19,7 +19,16 @@
     <div class="river" id="river-1"></div>
     <div class="river" id="river-0"></div>
   </div>
-  <div id="centerInfo">剩 0</div>
+  <div id="hud" class="hidden">
+    <div id="centerInfo">剩 0</div>
+    <button id="btnHudLevel" class="hud-btn">进阶</button>
+    <button id="btnHudQuit" class="hud-btn">退出</button>
+    <div id="hudLevel" class="hud-level">
+      <button data-lv="0">入门</button>
+      <button data-lv="1">进阶</button>
+      <button data-lv="2">高手</button>
+    </div>
+  </div>
 
   <div class="seat seat-self" id="seat-self"></div>
 </div>

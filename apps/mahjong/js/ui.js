@@ -386,8 +386,7 @@
       global.MJGame.restart(global.MJGame.state.auto);
     }, false);
     $('btnHome').addEventListener('click', function () {
-      hideResult();
-      $('homeOverlay').className = 'overlay on';
+      global.MJGame.quit();
     }, false);
   }
 

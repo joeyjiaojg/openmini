@@ -102,6 +102,10 @@
     for (i = 0; i < 4; i++) sortHand(G.players[i].hand);
     G.turn = G.dealer;
     UI.render(G);
+    var hud = document.getElementById('hud');
+    if (hud) hud.className = '';
+    var hudLv = document.getElementById('hudLevel');
+    if (hudLv) hudLv.className = 'hud-level';
     later(phaseLack, 500);
   }
 
@@ -644,9 +648,34 @@
     startGame(auto, curLevel);
   }
 
+  // 对局中切换难度：立即作用于机器人，并同步显示到 HUD
+  function setLevel(lv) {
+    if (lv !== 0 && lv !== 1 && lv !== 2) return;
+    curLevel = lv;
+    AI.setLevel(lv);
+    if (G) G.level = lv;
+    var hb = document.getElementById('btnHudLevel');
+    if (hb) hb.textContent = LEVEL_NAME[lv];
+  }
+
+  // 退出对局回主页：停掉所有定时器，丢弃当前局
+  function quit() {
+    clearTimers();
+    if (G) { G.over = true; G = null; }
+    UI.hideActions();
+    UI.hideLack();
+    UI.hideResult();
+    var hud = document.getElementById('hud');
+    if (hud) hud.className = 'hidden';
+    var home = document.getElementById('homeOverlay');
+    if (home) home.className = 'overlay on';
+  }
+
   global.MJGame = {
     start: startGame,
     restart: restart,
+    setLevel: setLevel,
+    quit: quit,
     humanDiscard: humanDiscard,
     get state() { return G; }
   };
