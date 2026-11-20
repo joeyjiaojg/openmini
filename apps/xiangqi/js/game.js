@@ -14,11 +14,15 @@ var BOARD_W = PAD * 2 + CELL * 8;   // 680
 var BOARD_H = PAD * 2 + CELL * 9;   // 756
 var SAVE_KEY = 'xiangqi.save.v1';
 var SETTINGS_KEY = 'xiangqi.settings.v1';
-var LEVEL_LABELS = { easy: '入门', normal: '普通', hard: '大师' };
+var LEVEL_LABELS = {
+  easy: '入门', normal: '普通', hard: '大师', master: '宗师', grandmaster: '棋圣'
+};
 var LEVEL_DESCS = {
   easy: '轻松对弈，适合新手',
   normal: '五层搜索，推荐日常使用',
-  hard: '六层深度计算，全力争胜'
+  hard: '六层深度计算，全力争胜',
+  master: '八层搜索，6 秒深度推演',
+  grandmaster: '十层极限计算，慢但最强'
 };
 
 // ---------- DOM ----------

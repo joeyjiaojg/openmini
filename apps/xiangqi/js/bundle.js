@@ -568,14 +568,17 @@ function dangerScore(board, target, bySide) {
 }
 
 var LEVELS = {
-  easy: { maxDepth: 2, time: 180, random: 0.28, window: 90 },
-  normal: { maxDepth: 5, time: 1200, random: 0.05, window: 25 },
-  hard: { maxDepth: 6, time: 3000, random: 0, window: 0 }
+  easy: { maxDepth: 2, time: 180, random: 0.28, window: 90, qDepth: 12 },
+  normal: { maxDepth: 5, time: 1200, random: 0.05, window: 25, qDepth: 12 },
+  hard: { maxDepth: 6, time: 3000, random: 0, window: 0, qDepth: 12 },
+  master: { maxDepth: 8, time: 6000, random: 0, window: 0, qDepth: 16 },
+  grandmaster: { maxDepth: 10, time: 12000, random: 0, window: 0, qDepth: 20 }
 };
 
 function startSearch(board, side, levelName, gameCounts) {
   var level = LEVELS[levelName] || LEVELS.normal;
   var deadline = Date.now() + level.time;
+  var maxTT = level.maxDepth >= 8 ? 600000 : 200000;
   var nodes = 0;
   var stopped = false;
   var tt = new Map();
@@ -622,7 +625,7 @@ function startSearch(board, side, levelName, gameCounts) {
     var stand = evaluate(board, side);
     if (stand >= beta) return stand;
     if (stand > alpha) alpha = stand;
-    if (ply >= 12) return stand;
+    if (ply >= level.qDepth) return stand;
     var caps = X.generateMoves(board, side, true);
     orderMoves(caps, 0, ply);
     for (var i = 0; i < caps.length; i++) {
@@ -703,7 +706,7 @@ function startSearch(board, side, levelName, gameCounts) {
           }
         }
         if (!stopped) {
-          if (tt.size > 200000) tt.clear();
+          if (tt.size > maxTT) tt.clear();
           tt.set(key, {
             depth: depth,
             score: best,
