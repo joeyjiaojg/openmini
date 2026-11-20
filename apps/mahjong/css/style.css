@@ -84,12 +84,23 @@ html, body {
   position: relative; flex: 0 0 auto;
   width: 6.7vw; height: 9.5vw;
   margin-right: 1px;
-  background: linear-gradient(155deg, #fdfbf2 0%, #f4ecd8 62%, #e9dfc6 100%);
-  border-radius: 3px;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, .28), inset 0 -1px 0 rgba(190, 175, 140, .8);
+  background: linear-gradient(158deg, #fffefa 0%, #f7f2e3 48%, #ece2c9 100%);
+  border: 1px solid #cfc4a6;
+  border-radius: 5px;
+  box-shadow:
+    0 3px 0 #b9ac8a,
+    0 4px 5px rgba(0, 0, 0, .42),
+    inset 0 1px 1px rgba(255, 255, 255, .95),
+    inset -2px -2px 3px rgba(150, 130, 90, .28);
   overflow: hidden;
 }
-.tile .face { position: absolute; top: 3%; left: 3%; right: 3%; bottom: 3%; }
+/* 顶面高光，增强象牙牌的立体质感 */
+.tile::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 42%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .55), rgba(255, 255, 255, 0));
+  pointer-events: none; z-index: 1;
+}
+.tile .face { position: absolute; top: 4%; left: 5%; right: 5%; bottom: 4%; }
 .tile svg { width: 100%; height: 100%; display: block; }
 
 .tile.sm { width: 5.6vw; height: 7.9vw; margin-right: 1px; }

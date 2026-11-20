@@ -29,7 +29,7 @@
    *  红色标记条：五条中心、七条最顶、九条中间整列
    */
   var TONG = {
-    1: [[30, 42, 13, 1]],
+    1: [[30, 42, 13, 2]],
     2: [[30, 28, 9, 0], [30, 56, 9, 0]],
     3: [[18, 26, 8, 0], [30, 42, 8, 1], [42, 58, 8, 0]],
     4: [[20, 28, 8, 0], [40, 28, 8, 1], [20, 56, 8, 1], [40, 56, 8, 0]],
@@ -51,28 +51,54 @@
     9: [[16, 8], [30, 8], [44, 8], [16, 32], [30, 32], [44, 32], [16, 56], [30, 56], [44, 56]]
   };
   var TIAO_RED = { 5: [2], 7: [0], 9: [1, 4, 7] };
-  var TONG_COLORS = ['#1b6b93', '#c0392b', '#1f8a5b'];
+  /* 铜钱式筒子三色盘：深描边 + 主色 + 中心点 + 高光，模拟截图里实心彩绘的饼子 */
+  var TONG_PALETTE = [
+    { dark: '#124a80', main: '#2e7fc1', core: '#eaf3fb' }, // 蓝
+    { dark: '#96271f', main: '#d5483c', core: '#fcece8' }, // 红
+    { dark: '#11613f', main: '#25a06a', core: '#e9f7ef' }  // 绿
+  ];
+
+  function coin(cx, cy, r, ci) {
+    var p = TONG_PALETTE[ci % 3];
+    var s = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="' + p.main + '" stroke="' + p.dark + '" stroke-width="1.7"/>';
+    s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + (r * 0.52) + '" fill="' + p.dark + '"/>';
+    s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + (r * 0.26) + '" fill="' + p.core + '"/>';
+    s += '<circle cx="' + (cx - r * 0.32) + '" cy="' + (cy - r * 0.32) + '" r="' + (r * 0.2) + '" fill="#fff" opacity=".42"/>';
+    return s;
+  }
+
+  /* 竹节式条子：实心绿/红竹段 + 中间的节 + 侧面高光 */
+  function bambooStick(cx, cy, isRed) {
+    var g = isRed ? '#c0392b' : '#1e9a63';
+    var gd = isRed ? '#8c241c' : '#11653f';
+    var knot = isRed ? '#f2d24b' : '#c0392b';
+    var s = '<rect x="' + (cx - 4) + '" y="' + (cy - 9) + '" width="8" height="18" rx="3.2" fill="' + g + '" stroke="' + gd + '" stroke-width="1"/>';
+    s += '<rect x="' + (cx - 4) + '" y="' + (cy - 2.5) + '" width="8" height="5" fill="' + knot + '"/>';
+    s += '<rect x="' + (cx - 2.4) + '" y="' + (cy - 7.4) + '" width="4.8" height="1.2" rx=".6" fill="#fff" opacity=".38"/>';
+    return s;
+  }
 
   function dotsSVG(rank) {
     var list = TONG[rank] || [];
     var s = '';
     for (var i = 0; i < list.length; i++) {
       var d = list[i];
-      var c = TONG_COLORS[d[3] % 3];
-      s += '<circle cx="' + d[0] + '" cy="' + d[1] + '" r="' + d[2] + '" fill="none" stroke="' + c + '" stroke-width="2.6"/>';
-      s += '<circle cx="' + d[0] + '" cy="' + d[1] + '" r="' + (d[2] * 0.38) + '" fill="' + c + '" opacity="0.72"/>';
+      s += coin(d[0], d[1], d[2], d[3]);
     }
     return s;
   }
 
   function sticksSVG(rank) {
     if (rank === 1) {
-      // 一条：画成幺鸡的样子（一根粗条 + 鸟头）
-      return '<g stroke="#186b45" stroke-width="3" fill="none">'
-        + '<rect x="26" y="20" width="8" height="42" rx="4" fill="#1f8a5b" stroke="none"/>'
-        + '<circle cx="30" cy="16" r="8" fill="#1f8a5b"/>'
-        + '<circle cx="27" cy="14" r="1.6" fill="#fff"/>'
-        + '<path d="M30 60 L22 72 L30 68 L38 72 Z" fill="#c0392b" stroke="none"/>'
+      // 一条：幺鸡（实心竹身 + 鸟头 + 尾羽）
+      return '<g>'
+        + '<rect x="25.5" y="22" width="9" height="40" rx="4" fill="#1e9a63" stroke="#11653f" stroke-width="1"/>'
+        + '<rect x="25.5" y="40" width="9" height="5" fill="#c0392b"/>'
+        + '<rect x="27.5" y="26" width="2.4" height="30" rx="1.2" fill="#fff" opacity=".35"/>'
+        + '<circle cx="30" cy="17" r="9" fill="#1e9a63" stroke="#11653f" stroke-width="1"/>'
+        + '<circle cx="33" cy="15" r="2" fill="#fff"/><circle cx="33.4" cy="15" r="1" fill="#222"/>'
+        + '<path d="M25 11 L18 6 L26 9 Z" fill="#c0392b"/>'
+        + '<path d="M30 62 L20 74 L30 69 L40 74 Z" fill="#c0392b" stroke="#8c241c" stroke-width="1"/>'
         + '</g>';
     }
     if (rank === 8) return eightSticksSVG();
@@ -81,37 +107,28 @@
     var s = '';
     for (var i = 0; i < list.length; i++) {
       var p = list[i];
-      var isRed = red.indexOf(i) >= 0;
-      var c = isRed ? '#c0392b' : '#1f8a5b';
-      var band = isRed ? '#f5d64a' : '#c0392b';
-      s += '<rect x="' + (p[0] - 3) + '" y="' + p[1] + '" width="6" height="17" rx="3" fill="' + c + '"/>';
-      s += '<rect x="' + (p[0] - 3) + '" y="' + (p[1] + 6) + '" width="6" height="5" fill="' + band + '" opacity="0.85"/>';
+      s += bambooStick(p[0], p[1] + 8.5, red.indexOf(i) >= 0);
     }
     return s;
   }
 
-  /* 八条：真正的麻将造型——顶部四条倒M(中间∧尖朝上)，底部四条M(中间∨尖朝下)，
-   * 两组斜条在牌中央交错成一个菱形。竖条用 transform 旋转出斜向。 */
+  /* 八条：顶部四条倒M(中间∧)、底部四条M(中间∨)，中央交错成菱形，全用竹节 */
   function eightSticksSVG() {
     function stick(cx, cy, deg) {
       var t = deg ? ' transform="rotate(' + deg + ' ' + cx + ' ' + cy + ')"' : '';
-      return '<g' + t + '>'
-        + '<rect x="' + (cx - 3) + '" y="' + (cy - 9) + '" width="6" height="18" rx="3" fill="#1f8a5b"/>'
-        + '<rect x="' + (cx - 3) + '" y="' + (cy - 2) + '" width="6" height="4" fill="#c0392b" opacity="0.85"/>'
-        + '</g>';
+      return '<g' + t + '>' + bambooStick(cx, cy, false) + '</g>';
     }
     var s = '';
-    // 顶部倒 M（W 形，中间 ∧）
     s += stick(13, 20, 0) + stick(23, 21, -38) + stick(37, 21, 38) + stick(47, 20, 0);
-    // 底部 M（中间 ∨）
     s += stick(13, 64, 0) + stick(23, 63, 38) + stick(37, 63, -38) + stick(47, 64, 0);
     return s;
   }
 
   function wanSVG(rank) {
     var num = R.NUM_CH[rank];
-    return '<text x="30" y="36" text-anchor="middle" font-size="31" font-family="serif" font-weight="600" fill="#173a6b">' + num + '</text>'
-      + '<text x="30" y="72" text-anchor="middle" font-size="27" font-family="serif" font-weight="600" fill="#b8342a">萬</text>';
+    var font = '"STKaiti","KaiTi","SimSun","Songti SC",serif';
+    return '<text x="30" y="41" text-anchor="middle" font-size="38" font-family="' + font + '" font-weight="700" fill="#173a6b">' + num + '</text>'
+      + '<text x="30" y="77" text-anchor="middle" font-size="34" font-family="' + font + '" font-weight="700" fill="#c0392b">萬</text>';
   }
 
   function faceSVG(t) {
