@@ -147,16 +147,18 @@ public class MainActivity extends Activity {
         if (webView != null) webView.loadUrl(url(HOST, "/index.html"));
     }
 
-    /** 按包 manifest 的 orientation 字段转屏：landscape/sensor 可选，默认竖屏 */
+    /** 按包 manifest 的 orientation 字段转屏：landscape/sensor 可选，默认竖屏。
+     *  landscape 用「强制横屏」而不是 SENSOR_LANDSCAPE：真机开「自动旋转锁定」时
+     *  传感器方向会被系统忽略，导致麻将这类横屏包打开还是竖屏。 */
     private void applyOrientation(JSONObject manifest) {
         String o = manifest == null ? "" : manifest.optString("orientation", "");
         try {
             if ("landscape".equalsIgnoreCase(o)) {
-                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             } else if ("sensor".equalsIgnoreCase(o)) {
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
             } else {
-                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
             }
         } catch (Exception ignored) {
         }

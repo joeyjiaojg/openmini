@@ -149,6 +149,7 @@
     h += '<span class="ting" id="tingTip"></span>';
     h += '</div>';
 
+    h += '<div class="self-row">';
     if (p.melds.length) {
       h += '<div class="melds">';
       for (var m = 0; m < p.melds.length; m++) h += meldHTML(p.melds[m]);
@@ -174,6 +175,7 @@
       h += tileHTML(hand[i], cls);
     }
     h += '</div>';
+    h += '</div>'; // self-row
     el.innerHTML = h;
 
     // 听牌提示
@@ -229,9 +231,10 @@
 
   function render(G) {
     if (!G) return;
+    // 标准麻将：下家在右手边、上家在左手边（摸牌/出牌逆时针轮转）
     renderSeat(G, 2, 'seat-top');
-    renderSeat(G, 3, 'seat-right');
-    renderSeat(G, 1, 'seat-left');
+    renderSeat(G, 1, 'seat-right');
+    renderSeat(G, 3, 'seat-left');
     renderSelf(G);
     renderRivers(G);
     renderCenter(G);
