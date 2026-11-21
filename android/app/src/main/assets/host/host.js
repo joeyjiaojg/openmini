@@ -138,26 +138,62 @@
         var sub = document.createElement('div');
         sub.className = 'mkt-sub';
         var inst = installedById(it.id);
-        if (inst) {
-          var same = inst.version && it.version && String(inst.version) === String(it.version);
-          sub.textContent = same ? ('已装 v' + it.version) : ('已装 v' + (inst.version || '?') + ' · 可更新 v' + (it.version || '?'));
+        var cmp = inst ? cmpVer(inst, it) : -1;
+        var isLatest = !!inst && cmp >= 0;
+        if (isLatest) {
+          sub.textContent = '已装 v' + (inst.version || it.version || '?') + ' · 已是最新';
+        } else if (inst) {
+          sub.textContent = '已装 v' + (inst.version || '?') + ' · 可更新 v' + (it.version || '?');
         } else {
           sub.textContent = 'v' + (it.version || '?') + ' · ' + fmtSize(it.size);
         }
         mid.appendChild(sub);
         row.appendChild(mid);
 
-        var btn = document.createElement('button');
-        btn.className = 'mkt-btn' + (inst ? ' ghost' : '');
-        btn.textContent = inst ? '更新' : '安装';
-        btn.addEventListener('click', function (e) {
-          e.stopPropagation();
-          doInstallMarket(it);
-        }, false);
+        var btn;
+        if (isLatest) {
+          // 已是最新版：只展示状态，不给点击更新的入口
+          btn = document.createElement('span');
+          btn.className = 'mkt-btn latest';
+          btn.textContent = '已最新';
+        } else {
+          btn = document.createElement('button');
+          btn.className = 'mkt-btn' + (inst ? ' ghost' : '');
+          btn.textContent = inst ? '更新' : '安装';
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            doInstallMarket(it);
+          }, false);
+        }
         row.appendChild(btn);
         box.appendChild(row);
       })(marketApps[i]);
     }
+  }
+
+  // 市场版本比较：优先 versionCode（整数），没有则按点分版本号逐段比数字。
+  // 返回 -1 表示 a 旧，0 相同，1 表示 a 新。
+  function cmpVer(a, b) {
+    var ac = a && a.versionCode, bc = b && b.versionCode;
+    if (ac !== undefined && ac !== null && ac !== '' &&
+        bc !== undefined && bc !== null && bc !== '') {
+      var ai = parseInt(ac, 10), bi = parseInt(bc, 10);
+      if (isFinite(ai) && isFinite(bi)) {
+        return ai < bi ? -1 : (ai > bi ? 1 : 0);
+      }
+    }
+    var av = String((a && a.version) || ''), bv = String((b && b.version) || '');
+    if (!av || !bv) return av === bv ? 0 : (av ? 1 : -1);
+    var as = av.split(/[.-]/), bs = bv.split(/[.-]/);
+    var n = Math.max(as.length, bs.length);
+    for (var i = 0; i < n; i++) {
+      var x = parseInt(as[i] || '0', 10), y = parseInt(bs[i] || '0', 10);
+      if (!isFinite(x)) x = 0;
+      if (!isFinite(y)) y = 0;
+      if (x < y) return -1;
+      if (x > y) return 1;
+    }
+    return 0;
   }
 
   function prettyName(id) {
