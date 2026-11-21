@@ -2,9 +2,17 @@
   'use strict';
 
   var apps = [];
+  var marketApps = [];
+  var marketLoaded = false;
   var pendingDelete = null;
   var lanUrl = '';
   var suppressClick = false;
+
+  // 市场里已装应用的版本，用来显示"已安装/可更新"
+  function installedById(id) {
+    for (var i = 0; i < apps.length; i++) if (apps[i].id === id) return apps[i];
+    return null;
+  }
 
   function $(id) { return document.getElementById(id); }
 
@@ -40,6 +48,7 @@
 
   var api = {
     apps: function () { return call('apps'); },
+    market: function () { call('market'); },
     meta: function () { return call('meta'); },
     installUrl: function (u) { call('installUrl', u); },
     pick: function () { call('pick'); },
@@ -96,7 +105,94 @@
     return wrap;
   }
 
+  function renderMarket() {
+    var box = $('marketList');
+    if (!box) return;
+    while (box.firstChild) box.removeChild(box.firstChild);
+    var tip = $('marketTip');
+    if (!marketLoaded) {
+      if (tip) tip.textContent = '正在获取最新应用…';
+      return;
+    }
+    if (!marketApps.length) {
+      if (tip) tip.textContent = '市场暂时打不开，不影响本地应用。';
+      return;
+    }
+    if (tip) tip.textContent = '小盒子官方市场 · 点一下就装';
+    for (var i = 0; i < marketApps.length; i++) {
+      (function (it) {
+        var row = document.createElement('div');
+        row.className = 'mkt-item';
+
+        var ico = document.createElement('div');
+        ico.className = 'mkt-ico';
+        ico.textContent = (it.id || '?').charAt(0).toUpperCase();
+        row.appendChild(ico);
+
+        var mid = document.createElement('div');
+        mid.className = 'mkt-mid';
+        var nm = document.createElement('div');
+        nm.className = 'mkt-nm';
+        nm.textContent = prettyName(it.id);
+        mid.appendChild(nm);
+        var sub = document.createElement('div');
+        sub.className = 'mkt-sub';
+        var inst = installedById(it.id);
+        if (inst) {
+          var same = inst.version && it.version && String(inst.version) === String(it.version);
+          sub.textContent = same ? ('已装 v' + it.version) : ('已装 v' + (inst.version || '?') + ' · 可更新 v' + (it.version || '?'));
+        } else {
+          sub.textContent = 'v' + (it.version || '?') + ' · ' + fmtSize(it.size);
+        }
+        mid.appendChild(sub);
+        row.appendChild(mid);
+
+        var btn = document.createElement('button');
+        btn.className = 'mkt-btn' + (inst ? ' ghost' : '');
+        btn.textContent = inst ? '更新' : '安装';
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          doInstallMarket(it);
+        }, false);
+        row.appendChild(btn);
+        box.appendChild(row);
+      })(marketApps[i]);
+    }
+  }
+
+  function prettyName(id) {
+    var map = { mahjong: '血战到底', xiangqi: '楚汉象棋', wordbuddy: 'WordBuddy 背单词', demo: '弹珠屏保' };
+    return map[id] || id || '应用';
+  }
+
+  function fmtSize(n) {
+    n = Number(n) || 0;
+    return n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.round(n / 1024) + 'KB';
+  }
+
+  function doInstallMarket(it) {
+    var h = host();
+    if (!h) { toast('浏览器里预览不支持'); return; }
+    if (!/^https:\/\/gh-proxy\.org\/https:\/\/github\.com\//.test(it.url)) {
+      toast('下载地址不合法'); return;
+    }
+    openSheet();
+    $('prog').className = 'prog on';
+    $('progBar').style.width = '0%';
+    $('msg').textContent = '正在下载 ' + prettyName(it.id) + '…';
+    h.installUrl(it.url);
+  }
+
+  function fetchMarket() {
+    var h = host();
+    if (!h) return;
+    marketLoaded = false;
+    renderMarket();
+    h.market();
+  }
+
   function render() {
+    renderMarket();
     var g = $('grid');
     while (g.firstChild) g.removeChild(g.firstChild);
     $('empty').style.display = apps.length ? 'none' : 'block';
@@ -289,6 +385,15 @@
   // ---------- 供 Java 回调 ----------
 
   window.BoxUI = {
+    onMarket: function (r) {
+      marketLoaded = true;
+      if (r && r.ok && r.apps) {
+        marketApps = r.apps;
+      } else {
+        marketApps = [];
+      }
+      renderMarket();
+    },
     onProgress: function (pct) {
       $('prog').className = 'prog on';
       $('progBar').style.width = pct + '%';
@@ -304,11 +409,13 @@
       if (ok) {
         $('url').value = '';
         load();
+        fetchMarket();
         setTimeout(closeSheet, 600);
       }
     },
     onPickRefresh: function () {
       load();
+      fetchMarket();
       toast('收到新包');
     }
   };
@@ -328,6 +435,7 @@
 
   bind();
   load();
+  fetchMarket();
 
   var h = host();
   if (h) {

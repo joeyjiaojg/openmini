@@ -382,3 +382,58 @@ input[type="url"]:focus {
   opacity: 1;
   transform: translate(-50%, 0);
 }
+
+/* ---------- 应用市场 ---------- */
+#market {
+  margin: 0 0 22px;
+  padding: 14px 12px 6px;
+  border: 1px solid rgba(201, 161, 90, 0.22);
+  border-radius: 16px;
+  background: linear-gradient(160deg, #221c14, #191510);
+}
+.mkt-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 2px 4px;
+}
+.mkt-head h2 {
+  margin: 0; font-size: 15px; font-weight: 600;
+  letter-spacing: 1px; color: #E8D9B8;
+}
+.mkt-badge {
+  font-size: 10px; padding: 1px 7px; border-radius: 99px;
+  background: rgba(201, 161, 90, 0.18); color: #D9B96A;
+  border: 1px solid rgba(201, 161, 90, 0.3);
+}
+.mkt-tip {
+  margin: 2px 2px 10px; font-size: 11px; color: #8C8070;
+}
+.mkt-list { display: flex; flex-direction: column; }
+.mkt-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 2px; border-top: 1px solid rgba(201, 161, 90, 0.1);
+}
+.mkt-ico {
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(145deg, #C9A15A, #8C6F3A);
+  color: #1a140c; font-size: 18px; font-weight: 700;
+}
+.mkt-mid { flex: 1; min-width: 0; }
+.mkt-nm {
+  font-size: 14px; color: #F0E2C4; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mkt-sub { font-size: 11px; color: #8C8070; margin-top: 2px; }
+.mkt-btn {
+  flex: 0 0 auto; border: 0; border-radius: 9px;
+  padding: 8px 15px; font-size: 12px; font-weight: 600; cursor: pointer;
+  background: #C9A15A; color: #1a140c;
+}
+.mkt-btn:active { opacity: .82; }
+.mkt-btn.ghost {
+  background: transparent; color: #D9B96A;
+  border: 1px solid rgba(201, 161, 90, 0.4);
+}
+.section-label {
+  margin: 0 2px 10px; font-size: 12px; letter-spacing: 2px; color: #8C8070;
+}

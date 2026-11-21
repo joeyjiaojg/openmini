@@ -32,6 +32,8 @@ import java.net.URL;
 import java.util.HashMap;
 import java.util.Locale;
 
+import org.json.JSONArray;
+
 /**
  * 单 Activity 宿主：内置 WebView 只认 *.apps.local 这一组虚拟域名。
  * 启动器（host.apps.local）负责列表和装包，每个游戏跑在 <id>.apps.local，
@@ -52,6 +54,12 @@ public class MainActivity extends Activity {
     static final String ID_RE = "[a-z0-9][a-z0-9_-]{0,39}";
     private static final String PROMPT_PREFIX = "__om__";
     private static final int REQ_PICK = 1001;
+
+    /* 默认应用市场：小盒子启动后从这里拉最新 Release 的 zip 资产。
+     * 走 gh-proxy 前缀，国内可直连；API 拿到的 browser_download_url 会再套一层前缀。 */
+    private static final String MARKET_API =
+            "https://gh-proxy.org/https://api.github.com/repos/joeyjiaojg/openmini-market/releases/latest";
+    private static final String GH_PROXY = "https://gh-proxy.org/";
 
     private static final String CSP_LAUNCHER =
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
@@ -411,6 +419,10 @@ public class MainActivity extends Activity {
         String a = arg instanceof String ? (String) arg : (arg == null ? null : String.valueOf(arg));
 
         if ("apps".equals(m)) return store.listJson();
+        if ("market".equals(m)) {
+            loadMarket();
+            return "";
+        }
         if ("meta".equals(m)) {
             JSONObject o = new JSONObject();
             try {
@@ -484,6 +496,95 @@ public class MainActivity extends Activity {
             return "";
         }
         return "{\"ok\":false,\"msg\":\"unknown\"}";
+    }
+
+    // ---------- 应用市场 ----------
+
+    /** 拉取默认市场的 latest Release 资产列表，回调 window.BoxUI.onMarket(json)。
+     *  只读取官方仓库的公开 Release；失败时返回 ok=false，页面降级到本地应用列表。 */
+    private void loadMarket() {
+        new Thread(new Runnable() {
+            public void run() {
+                String body;
+                try {
+                    body = fetch(MARKET_API);
+                    JSONObject rel = new JSONObject(body);
+                    String tag = rel.optString("tag_name", "");
+                    JSONArray assets = rel.optJSONArray("assets");
+                    JSONArray out = new JSONArray();
+                    if (assets != null) {
+                        for (int i = 0; i < assets.length(); i++) {
+                            JSONObject a = assets.getJSONObject(i);
+                            String name = a.optString("name", "");
+                            if (!name.toLowerCase(Locale.US).endsWith(".zip")) continue;
+                            String dl = a.optString("browser_download_url", "");
+                            if (!dl.startsWith("https://github.com/")) continue;
+                            JSONObject item = new JSONObject();
+                            item.put("name", name);
+                            item.put("size", a.optLong("size", 0));
+                            item.put("url", GH_PROXY + dl);
+                            // 从文件名猜 id/版本：mahjong-v1.2.0.zip → mahjong / 1.2.0
+                            String stem = name.substring(0, name.length() - 4);
+                            int dash = stem.lastIndexOf("-v");
+                            if (dash > 0) {
+                                item.put("id", stem.substring(0, dash).toLowerCase(Locale.US));
+                                item.put("version", stem.substring(dash + 2));
+                            } else {
+                                item.put("id", stem.toLowerCase(Locale.US));
+                            }
+                            out.put(item);
+                        }
+                    }
+                    JSONObject res = new JSONObject();
+                    res.put("ok", true);
+                    res.put("tag", tag);
+                    res.put("apps", out);
+                    js("window.BoxUI&&BoxUI.onMarket(" + res.toString() + ")");
+                } catch (Exception e) {
+                    String mm = e.getMessage();
+                    JSONObject res = new JSONObject();
+                    try {
+                        res.put("ok", false);
+                        res.put("msg", "市场暂时不可用: " + (mm == null ? "网络错误" : mm));
+                    } catch (Exception ignored) {
+                    }
+                    js("window.BoxUI&&BoxUI.onMarket(" + res.toString() + ")");
+                }
+            }
+        }).start();
+    }
+
+    /** 轻量 GET，返回字符串；供 API 调用，限制体积防滥用。 */
+    private static String fetch(String urlStr) throws IOException {
+        HttpURLConnection c = null;
+        try {
+            URL u = new URL(urlStr);
+            c = (HttpURLConnection) u.openConnection();
+            c.setConnectTimeout(12000);
+            c.setReadTimeout(20000);
+            c.setInstanceFollowRedirects(true);
+            c.setRequestProperty("User-Agent", "OpenMini/1.2");
+            c.setRequestProperty("Accept", "application/vnd.github+json");
+            int code = c.getResponseCode();
+            if (code != 200) throw new IOException("HTTP " + code);
+            InputStream in = c.getInputStream();
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            try {
+                byte[] buf = new byte[8192];
+                int n;
+                long sum = 0;
+                while ((n = in.read(buf)) > 0) {
+                    sum += n;
+                    if (sum > 2L * 1024 * 1024) throw new IOException("响应过大");
+                    bo.write(buf, 0, n);
+                }
+                return new String(bo.toByteArray(), "UTF-8");
+            } finally {
+                AppStore.closeQuietly(in);
+            }
+        } finally {
+            if (c != null) c.disconnect();
+        }
     }
 
     // ---------- 装包通道 ----------
