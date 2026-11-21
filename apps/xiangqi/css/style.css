@@ -114,6 +114,28 @@ h1 {
   font-weight: bold;
 }
 
+/* 步数上限设置行 */
+.limit-row {
+  display: flex; gap: 6px; align-items: center; justify-content: center;
+  flex-wrap: wrap; margin-bottom: 10px;
+}
+.limit-row > span { color: #6b4a1f; font-size: 13px; }
+.limit-row .limit-unit { color: #8a6a3d; font-size: 13px; }
+.limit-row button {
+  padding: 6px 12px; border: 1.5px solid #b98d4f; background: #fff6e3;
+  color: #6b4a1f; border-radius: 9px; font-size: 13px;
+}
+.limit-row button.active {
+  background: #b33a2b; border-color: #b33a2b; color: #fff; font-weight: bold;
+}
+.limit-row input[type=number] {
+  width: 84px; padding: 6px 8px; text-align: center;
+  border: 1.5px solid #b98d4f; border-radius: 9px;
+  background: #fffdf7; color: #5b3a17; font-size: 15px; font-weight: bold;
+  -moz-appearance: textfield;
+}
+.limit-row input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
 button.primary {
   display: block;
   width: 100%;

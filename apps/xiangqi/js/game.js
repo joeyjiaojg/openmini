@@ -51,6 +51,8 @@ var noCapturePlies = 0;      // 连续无吃子步数（120 步 = 60 回合，�
 var AI_MOVE_DELAY = 1100;    // 观战模式每步停留时间，便于观察
 var NO_CAPTURE_LIMIT = 120;
 var REPEAT_CHECK_WIN = 2;    // 连续将军达到该次数且三次重复 → 长将判负
+var moveLimit = 120;         // 总步数上限，0=不限；达到仍未分胜负判和
+var MOVE_LIMIT_DEFAULT = 120;
 
 function validBoard(b) {
   if (!b || b.length !== 90) return false;
@@ -64,6 +66,17 @@ function copyCounts(src) {
   var out = {};
   for (var k in src) out[k] = src[k];
   return out;
+}
+
+// 步数上限归一化：0=不限；合法范围 20~999，非法值回退默认
+function normalizeLimit(v, fallback) {
+  var n = Number(v);
+  if (!isFinite(n) || n < 0) return fallback;
+  if (n === 0) return 0;
+  n = Math.round(n);
+  if (n < 20) return 20;
+  if (n > 999) return 999;
+  return n;
 }
 
 // ---------- Toast ----------
@@ -108,6 +121,7 @@ function loadState() {
     if (settings.playerSide === X.RED || settings.playerSide === X.BLACK) playerSide = settings.playerSide;
     if (typeof settings.soundOn === 'boolean') soundEnabled = settings.soundOn;
     if (settings.mode === 'ai') mode = 'ai';
+    moveLimit = normalizeLimit(settings.moveLimit, MOVE_LIMIT_DEFAULT);
   }
   Sound.setEnabled(soundEnabled !== false);
 
@@ -150,12 +164,13 @@ function resumeGame() {
   return true;
 }
 
-function startGame(newMode, newPlayerSide, newLevel) {
+function startGame(newMode, newPlayerSide, newLevel, newLimit) {
   board = X.initialBoard();
   side = X.RED;
   mode = newMode === 'ai' ? 'ai' : 'human';
   playerSide = mode === 'ai' ? -1 : newPlayerSide;
   level = AI.LEVELS[newLevel] ? newLevel : 'normal';
+  moveLimit = normalizeLimit(newLimit, moveLimit);
   moveHistory = [];
   capturedRed = [];
   capturedBlack = [];
@@ -206,7 +221,8 @@ function saveSettings() {
     level: level,
     playerSide: playerSide,
     mode: mode,
-    soundOn: soundEnabled !== false
+    soundOn: soundEnabled !== false,
+    moveLimit: moveLimit
   });
 }
 
@@ -246,6 +262,13 @@ function finishByNoCapture() {
   gameOver = true;
   resultText = '和棋';
   resultReason = '连续 60 回合无吃子，按规则判和';
+  showResult();
+}
+
+function finishByMoveLimit() {
+  gameOver = true;
+  resultText = '和棋';
+  resultReason = '达到 ' + moveLimit + ' 步上限仍未分胜负，判和';
   showResult();
 }
 
@@ -299,12 +322,15 @@ function doMove(move) {
   checkStreak[mover] = gaveCheck ? (checkStreak[mover] || 0) + 1 : 0;
   var posKey = String(AI.hashBoard(board, side));
   posCounts[posKey] = (posCounts[posKey] || 0) + 1;
-  if (!status.over && posCounts[posKey] >= 3) {
-    finishByRepetition();
-  } else if (!status.over && noCapturePlies >= NO_CAPTURE_LIMIT) {
-    finishByNoCapture();
-  } else if (status.over) {
+  // 判定优先级：将死/困毙 > 三次重复 > 自然限着(无吃子) > 步数上限
+  if (status.over) {
     finishByStatus(status);
+  } else if (posCounts[posKey] >= 3) {
+    finishByRepetition();
+  } else if (noCapturePlies >= NO_CAPTURE_LIMIT) {
+    finishByNoCapture();
+  } else if (moveLimit > 0 && moveCount >= moveLimit) {
+    finishByMoveLimit();
   }
   saveGame();
   updateUI();
@@ -476,6 +502,10 @@ function renderSoundBtn() {
   document.getElementById('btn-sound').textContent = soundEnabled !== false ? '🔊 音效' : '🔇 静音';
 }
 
+function renderLimitBtn() {
+  document.getElementById('btn-limit').textContent = '步数·' + (moveLimit === 0 ? '不限' : moveLimit);
+}
+
 function openLevelModal() {
   elLevelModal.style.display = 'flex';
 }
@@ -506,7 +536,8 @@ function updateUI() {
   elStatus.textContent = statusText;
   elStatus.className = 'status ' + tone;
 
-  elMoveCount.textContent = '第 ' + (moveCount + (gameOver ? 0 : 1)) + ' 手';
+  elMoveCount.textContent = '第 ' + (moveCount + (gameOver ? 0 : 1)) + ' 手' +
+    (moveLimit > 0 ? ' / 上限 ' + moveLimit : '');
 
   elCapturedRed.textContent = capturedRed.map(function (p) {
     return X.PIECE_NAME[X.typeOf(p)][X.sideOf(p)];
@@ -768,6 +799,7 @@ document.getElementById('btn-sound').addEventListener('click', toggleSound);
 var startSide = X.RED;
 var startLevel = 'normal';
 var startMode = 'human';
+var startLimit = MOVE_LIMIT_DEFAULT;
 each('#mode-picker button', function (btn) {
   btn.addEventListener('click', function () {
     startMode = btn.dataset.mode === 'ai' ? 'ai' : 'human';
@@ -799,7 +831,9 @@ each('#level-picker button', function (btn) {
 });
 document.getElementById('btn-begin').addEventListener('click', function () {
   Sound.warmup();
-  startGame(startMode, startSide, startLevel);
+  var inp = document.getElementById('limit-input');
+  startLimit = normalizeLimit(inp ? inp.value : moveLimit, MOVE_LIMIT_DEFAULT);
+  startGame(startMode, startSide, startLevel, startLimit);
 });
 elBtnContinue.addEventListener('click', function () {
   if (!resumeGame()) showToast('没有可继续的对局');
@@ -821,12 +855,63 @@ each('#level-modal .level-item', function (item) {
 });
 document.getElementById('level-close').addEventListener('click', closeLevelModal);
 
+// ---------- 步数上限 ----------
+function syncLimitButtons(activeSel, val) {
+  each(activeSel + ' button[data-lim]', function (b) {
+    b.classList.toggle('active', Number(b.dataset.lim) === val);
+  });
+}
+function openLimitModal() {
+  var imp = document.getElementById('limit-input-modal');
+  if (imp) imp.value = moveLimit || 0;
+  syncLimitButtons('#limit-modal', moveLimit);
+  document.getElementById('limit-modal').style.display = 'flex';
+}
+function closeLimitModal() {
+  document.getElementById('limit-modal').style.display = 'none';
+}
+// 开局面板与弹窗里的快捷值按钮
+each('#start-overlay .limit-row button[data-lim], #limit-modal button[data-lim]', function (btn) {
+  btn.addEventListener('click', function () {
+    var v = Number(btn.dataset.lim);
+    // 兼容旧 WebView：不用 closest，逐层向上找 start-overlay
+    var isHome = false;
+    var p = btn.parentNode;
+    while (p) {
+      if (p.id === 'start-overlay') { isHome = true; break; }
+      p = p.parentNode;
+    }
+    var inp = document.getElementById(isHome ? 'limit-input' : 'limit-input-modal');
+    if (inp) inp.value = v === 0 ? '0' : String(v);
+    syncLimitButtons(isHome ? '#start-overlay' : '#limit-modal', v);
+  });
+});
+document.getElementById('btn-limit').addEventListener('click', openLimitModal);
+document.getElementById('limit-close').addEventListener('click', closeLimitModal);
+document.getElementById('limit-save').addEventListener('click', function () {
+  var imp = document.getElementById('limit-input-modal');
+  var v = normalizeLimit(imp ? imp.value : moveLimit, moveLimit);
+  moveLimit = v;
+  saveSettings();
+  renderLimitBtn();
+  updateUI();
+  closeLimitModal();
+  showToast(v === 0 ? '步数上限已设为不限' : ('步数上限已设为 ' + v + ' 步'));
+});
+
 window.addEventListener('resize', function () { draw(); });
 
 // ---------- 启动 ----------
 loadState();
 setLevel(level);
 renderSoundBtn();
+renderLimitBtn();
+startLimit = moveLimit;
+(function () {
+  var inp = document.getElementById('limit-input');
+  if (inp) inp.value = moveLimit || 0;
+  syncLimitButtons('#start-overlay', moveLimit);
+})();
 if (hasSave) {
   elBtnContinue.style.display = '';
 } else {

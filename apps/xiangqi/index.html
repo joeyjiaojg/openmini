@@ -51,6 +51,15 @@ window.onerror = function (msg, src, line) {
           <button data-level="master">宗师</button>
           <button data-level="grandmaster">棋圣</button>
         </div>
+        <div class="limit-row">
+          <span>步数上限</span>
+          <button type="button" data-lim="0">不限</button>
+          <button type="button" data-lim="120" class="active">120</button>
+          <button type="button" data-lim="200">200</button>
+          <input id="limit-input" type="number" min="20" max="999" step="10" value="120" inputmode="numeric">
+          <span class="limit-unit">步</span>
+        </div>
+        <p class="sub small">达到步数上限仍未分胜负即判和棋；连续 60 回合无吃子也自动判和</p>
         <p id="mode-tip" class="sub small" style="display:none">红黑双方均由 AI 执子，每步停留约 1 秒便于观察</p>
         <button id="btn-begin" class="primary">开始对局</button>
         <button id="btn-continue" class="ghost">继续上次对局</button>
@@ -79,6 +88,26 @@ window.onerror = function (msg, src, line) {
         <button id="level-close" class="ghost">关闭</button>
       </div>
     </div>
+
+    <!-- 步数上限弹窗（局中可改） -->
+    <div id="limit-modal" class="overlay" style="display:none">
+      <div class="panel small">
+        <h3>步数上限</h3>
+        <p class="sub small">达到上限仍未分胜负即判和棋。设为 0 表示不限制。</p>
+        <div class="limit-row">
+          <button type="button" data-lim="0">不限</button>
+          <button type="button" data-lim="120">120</button>
+          <button type="button" data-lim="200">200</button>
+          <button type="button" data-lim="300">300</button>
+        </div>
+        <div class="limit-row">
+          <input id="limit-input-modal" type="number" min="20" max="999" step="10" value="120" inputmode="numeric">
+          <span class="limit-unit">步</span>
+        </div>
+        <button id="limit-save" class="primary">确定</button>
+        <button id="limit-close" class="ghost">关闭</button>
+      </div>
+    </div>
   </div>
 
   <div id="toast"></div>
@@ -88,6 +117,7 @@ window.onerror = function (msg, src, line) {
     <button id="btn-undo">悔棋</button>
     <button id="btn-hint">提示</button>
     <button id="btn-level">难度·普通</button>
+    <button id="btn-limit">步数·120</button>
     <button id="btn-sound">🔊 音效</button>
   </div>
 
