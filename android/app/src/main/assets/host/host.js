@@ -4,6 +4,9 @@
   var apps = [];
   var marketApps = [];
   var marketLoaded = false;
+  var selfUpdate = null;      // 宿主自升级检查结果
+  var selfChecking = false;
+  var selfDownloading = false;
   var pendingDelete = null;
   var lanUrl = '';
   var suppressClick = false;
@@ -49,6 +52,8 @@
   var api = {
     apps: function () { return call('apps'); },
     market: function () { call('market'); },
+    updateCheck: function () { call('updateCheck'); },
+    updateInstall: function () { call('updateInstall'); },
     meta: function () { return call('meta'); },
     installUrl: function (u) { call('installUrl', u); },
     pick: function () { call('pick'); },
@@ -227,6 +232,67 @@
     h.market();
   }
 
+  // ---------- 宿主自升级 ----------
+
+  function renderUpdate() {
+    var sub = $('updSub'), btn = $('updBtn'), notes = $('updNotes');
+    if (!sub || !btn) return;
+
+    if (selfDownloading) {
+      sub.textContent = '正在下载新版本…';
+      setBtn(btn, '下载中', 'ghost', true);
+      return;
+    }
+    if (selfChecking) {
+      sub.textContent = '正在检查更新…';
+      setBtn(btn, '检查中', 'ghost', true);
+      return;
+    }
+    var s = selfUpdate;
+    if (!s) {
+      sub.textContent = '尚未检查';
+      setBtn(btn, '检查', 'ghost', false);
+      return;
+    }
+    if (!s.ok) {
+      sub.textContent = s.msg || '检查失败，点重试';
+      setBtn(btn, '重试', 'ghost', false);
+      notes.textContent = '';
+      return;
+    }
+    var has = !!s.hasUpdate;
+    sub.textContent = has
+      ? ('发现新版本 v' + s.version + ' · 当前 v' + s.local + ' · ' + fmtSize(s.size))
+      : ('已是最新版本 v' + s.local);
+    setBtn(btn, has ? '立即更新' : '已最新', has ? 'solid' : 'latest', false);
+    notes.textContent = has ? (s.notes || '') : '';
+  }
+
+  function setBtn(btn, text, cls, disabled) {
+    btn.textContent = text;
+    btn.className = 'upd-btn ' + cls;
+    btn.disabled = !!disabled;
+  }
+
+  function fetchUpdate() {
+    var h = host();
+    if (!h) { return; } // 浏览器预览不支持
+    selfChecking = true;
+    renderUpdate();
+    h.updateCheck();
+  }
+
+  function doSelfUpdate() {
+    if (!selfUpdate || !selfUpdate.ok || !selfUpdate.hasUpdate) return;
+    var h = host();
+    if (!h) return;
+    selfDownloading = true;
+    $('updProg').className = 'upd-prog on';
+    $('updProgBar').style.width = '0%';
+    renderUpdate();
+    h.updateInstall();
+  }
+
   function render() {
     renderMarket();
     var g = $('grid');
@@ -350,6 +416,13 @@
       refreshLan();
     }, false);
 
+    $('updBtn').addEventListener('click', function () {
+      var s = selfUpdate;
+      if (selfChecking || selfDownloading) return;
+      if (s && s.ok && s.hasUpdate) doSelfUpdate();
+      else fetchUpdate();
+    }, false);
+
     $('mask').addEventListener('click', closeSheet, false);
 
     var tabs = document.querySelectorAll('.tab');
@@ -453,6 +526,30 @@
       load();
       fetchMarket();
       toast('收到新包');
+    },
+    onSelfUpdate: function (r) {
+      selfChecking = false;
+      selfUpdate = r;
+      renderUpdate();
+      if (r && r.ok && r.hasUpdate) toast('发现小盒子新版本 v' + r.version);
+    },
+    onSelfUpdateProgress: function (pct) {
+      $('updProg').className = 'upd-prog on';
+      $('updProgBar').style.width = pct + '%';
+      $('updSub').textContent = '正在下载新版本… ' + pct + '%';
+    },
+    onSelfInstall: function (r) {
+      selfDownloading = false;
+      $('updProg').className = 'upd-prog';
+      $('updProgBar').style.width = '0%';
+      var msg = (r && r.msg) || (r && r.ok ? '完成' : '失败');
+      toast(msg);
+      if (!r || !r.ok) {
+        renderUpdate();
+      } else {
+        $('updSub').textContent = '正在安装，稍后自动重启…';
+        setBtn($('updBtn'), '安装中', 'ghost', true);
+      }
     }
   };
 
@@ -472,6 +569,9 @@
   bind();
   load();
   fetchMarket();
+  renderUpdate();
+  // 进入启动器就自动检查一次更新；有新版再提示，不打扰（无新版不弹窗）
+  if (host()) setTimeout(fetchUpdate, 600);
 
   var h = host();
   if (h) {

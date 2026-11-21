@@ -6,7 +6,9 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.JsPromptResult;
@@ -31,6 +33,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.json.JSONArray;
 
@@ -54,6 +58,14 @@ public class MainActivity extends Activity {
     static final String ID_RE = "[a-z0-9][a-z0-9_-]{0,39}";
     private static final String PROMPT_PREFIX = "__om__";
     private static final int REQ_PICK = 1001;
+    private static final int REQ_INSTALL_UNKNOWN = 1002;
+
+    /* 宿主自升级：检查 openmini 仓库 latest Release，从 APK 资产名解析版本。
+     * tag（v1.5.0）是发布流水号，与 APK 版本（1.2.1）不同，不能拿来比较。 */
+    private static final String SELF_UPDATE_API =
+            "https://gh-proxy.org/https://api.github.com/repos/joeyjiaojg/openmini/releases/latest";
+    static final String UPDATE_APK = "openmini-update.apk";
+    private static final Pattern APK_VER = Pattern.compile("OpenMini-v(\\d+(?:\\.\\d+)*)\\.apk", Pattern.CASE_INSENSITIVE);
 
     /* 默认应用市场：小盒子启动后从这里拉最新 Release 的 zip 资产。
      * 走 gh-proxy 前缀，国内可直连；API 拿到的 browser_download_url 会再套一层前缀。 */
@@ -423,6 +435,14 @@ public class MainActivity extends Activity {
             loadMarket();
             return "";
         }
+        if ("updateCheck".equals(m)) {
+            checkSelfUpdate();
+            return "";
+        }
+        if ("updateInstall".equals(m)) {
+            installSelfUpdate();
+            return "";
+        }
         if ("meta".equals(m)) {
             JSONObject o = new JSONObject();
             try {
@@ -552,6 +572,190 @@ public class MainActivity extends Activity {
                 }
             }
         }).start();
+    }
+
+    // ---------- 宿主自升级 ----------
+
+    private volatile String selfUpdateUrl = null;
+    private volatile long selfUpdateSize = 0;
+    private volatile String selfUpdateVer = null;
+    private boolean installAfterPermission = false;
+
+    /** 本地版本（versionName），失败时回退字符串。 */
+    private String localVersion() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /** 点分版本号比较：a>b 返回正数，相等 0，a<b 返回负数。非法段当 0。 */
+    static int compareVersion(String a, String b) {
+        String[] x = (a == null ? "" : a).split("\\.");
+        String[] y = (b == null ? "" : b).split("\\.");
+        int n = Math.max(x.length, y.length);
+        for (int i = 0; i < n; i++) {
+            int xi = 0, yi = 0;
+            try { xi = Integer.parseInt(x[i].trim()); } catch (Exception ignored) { }
+            try { yi = Integer.parseInt(y[i].trim()); } catch (Exception ignored) { }
+            if (xi != yi) return xi - yi;
+        }
+        return 0;
+    }
+
+    /** 拉取 openmini latest Release，解析 APK 资产版本，与本地版本比较。
+     *  回调 window.BoxUI.onSelfUpdate(json)。 */
+    private void checkSelfUpdate() {
+        new Thread(new Runnable() {
+            public void run() {
+                JSONObject res = new JSONObject();
+                try {
+                    JSONObject rel = new JSONObject(fetch(SELF_UPDATE_API));
+                    String tag = rel.optString("tag_name", "");
+                    String notes = rel.optString("name", "");
+                    JSONArray assets = rel.optJSONArray("assets");
+                    String bestVer = null, bestUrl = null;
+                    long bestSize = 0;
+                    if (assets != null) {
+                        for (int i = 0; i < assets.length(); i++) {
+                            JSONObject a = assets.getJSONObject(i);
+                            String name = a.optString("name", "");
+                            Matcher m = APK_VER.matcher(name);
+                            if (!m.find()) continue;
+                            String v = m.group(1);
+                            if (bestVer == null || compareVersion(v, bestVer) > 0) {
+                                bestVer = v;
+                                String dl = a.optString("browser_download_url", "");
+                                if (!dl.startsWith("https://github.com/")) continue;
+                                bestUrl = GH_PROXY + dl;
+                                bestSize = a.optLong("size", 0);
+                            }
+                        }
+                    }
+                    if (bestVer == null || bestUrl == null) throw new IOException("没有找到安装包");
+                    String local = localVersion();
+                    boolean has = compareVersion(bestVer, local) > 0;
+                    selfUpdateUrl = bestUrl;
+                    selfUpdateVer = bestVer;
+                    selfUpdateSize = bestSize;
+                    res.put("ok", true);
+                    res.put("hasUpdate", has);
+                    res.put("version", bestVer);
+                    res.put("local", local);
+                    res.put("tag", tag);
+                    res.put("notes", notes);
+                    res.put("size", bestSize);
+                } catch (Exception e) {
+                    String mm = e.getMessage();
+                    try {
+                        res.put("ok", false);
+                        res.put("msg", "检查失败: " + (mm == null ? e.getClass().getSimpleName() : mm));
+                    } catch (Exception ignored) { }
+                }
+                js("window.BoxUI&&BoxUI.onSelfUpdate(" + res.toString() + ")");
+            }
+        }).start();
+    }
+
+    /** 用户点击升级：先申请「安装未知应用」权限，再下载安装。 */
+    private void installSelfUpdate() {
+        if (selfUpdateUrl == null) {
+            js("window.BoxUI&&BoxUI.onSelfInstall({\"ok\":false,\"msg\":\"请先检查更新\"})");
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+            installAfterPermission = true;
+            try {
+                Intent i = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:" + getPackageName()));
+                startActivityForResult(i, REQ_INSTALL_UNKNOWN);
+                toast("请允许小盒子安装应用，然后会自动继续");
+            } catch (Exception e) {
+                installAfterPermission = false;
+                js("window.BoxUI&&BoxUI.onSelfInstall({\"ok\":false,\"msg\":\"无法打开安装权限设置\"})");
+            }
+            return;
+        }
+        doDownloadAndInstall();
+    }
+
+    private void doDownloadAndInstall() {
+        final String url = selfUpdateUrl;
+        if (url == null) return;
+        new Thread(new Runnable() {
+            public void run() {
+                File apk = new File(getCacheDir(), UPDATE_APK);
+                try {
+                    if (apk.exists()) apk.delete();
+                    downloadSelf(url, apk);
+                    if (!apk.isFile() || apk.length() < 10240) throw new IOException("安装包不完整");
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            try {
+                                Uri uri = Uri.parse("content://com.openmini.host.apkprovider/" + UPDATE_APK);
+                                Intent i = new Intent(Intent.ACTION_INSTALL_PACKAGE);
+                                i.setDataAndType(uri, "application/vnd.android.package-archive");
+                                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                i.putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true);
+                                js("window.BoxUI&&BoxUI.onSelfInstall({\"ok\":true,\"msg\":\"正在安装…\"})");
+                                startActivity(i);
+                            } catch (Exception e) {
+                                js("window.BoxUI&&BoxUI.onSelfInstall({\"ok\":false,\"msg\":\"无法调起安装器\"})");
+                            }
+                        }
+                    });
+                } catch (Exception e) {
+                    String mm = e.getMessage();
+                    js("window.BoxUI&&BoxUI.onSelfInstall({\"ok\":false,\"msg\":\"下载失败: "
+                            + (mm == null ? e.getClass().getSimpleName() : mm) + "\"})");
+                }
+            }
+        }).start();
+    }
+
+    /** 下载更新包，进度回调 onSelfUpdateProgress。 */
+    private void downloadSelf(String urlStr, File out) throws IOException {
+        HttpURLConnection c = null;
+        try {
+            URL u = new URL(urlStr);
+            String proto = u.getProtocol();
+            if (!"http".equals(proto) && !"https".equals(proto)) throw new IOException("只支持 http/https");
+            c = (HttpURLConnection) u.openConnection();
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(60000);
+            c.setInstanceFollowRedirects(true);
+            c.setRequestProperty("User-Agent", "OpenMini-Updater/1.0");
+            int code = c.getResponseCode();
+            if (code != 200) throw new IOException("HTTP " + code);
+            int total = c.getContentLength();
+            InputStream in = c.getInputStream();
+            OutputStream fo = new FileOutputStream(out);
+            try {
+                byte[] buf = new byte[16384];
+                int n;
+                long sum = 0;
+                int last = -1;
+                while ((n = in.read(buf)) > 0) {
+                    fo.write(buf, 0, n);
+                    sum += n;
+                    if (sum > 40L * 1024 * 1024) throw new IOException("安装包超过 40MB");
+                    if (total > 0) {
+                        int pct = (int) (sum * 100 / total);
+                        if (pct != last) {
+                            last = pct;
+                            js("window.BoxUI&&BoxUI.onSelfUpdateProgress(" + pct + ")");
+                        }
+                    }
+                }
+            } finally {
+                AppStore.closeQuietly(fo);
+                AppStore.closeQuietly(in);
+            }
+        } finally {
+            if (c != null) c.disconnect();
+        }
     }
 
     /** 轻量 GET，返回字符串；供 API 调用，限制体积防滥用。 */
@@ -742,6 +946,16 @@ public class MainActivity extends Activity {
         super.onActivityResult(req, res, data);
         if (req == REQ_PICK && res == RESULT_OK && data != null && data.getData() != null) {
             installFromUri(data.getData());
+        }
+        if (req == REQ_INSTALL_UNKNOWN) {
+            boolean granted = Build.VERSION.SDK_INT < 26 || getPackageManager().canRequestPackageInstalls();
+            if (granted && installAfterPermission) {
+                installAfterPermission = false;
+                doDownloadAndInstall();
+            } else if (!granted) {
+                installAfterPermission = false;
+                js("window.BoxUI&&BoxUI.onSelfInstall({\"ok\":false,\"msg\":\"未获得安装权限\"})");
+            }
         }
     }
 
