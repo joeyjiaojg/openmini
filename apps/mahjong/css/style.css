@@ -10,8 +10,41 @@ html, body {
 
 #board {
   position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  /* 暖色麻将馆房间：顶部暖光 + 深木墙 + 暗色地面 */
   background:
-    radial-gradient(circle at 50% 40%, #176148 0%, #0d3d2c 48%, #061d16 100%);
+    radial-gradient(ellipse at 50% -12%, rgba(255, 214, 150, .2), transparent 46%),
+    linear-gradient(180deg, #3a2a1c 0%, #2a2118 32%, #141410 100%);
+}
+/* 房间氛围：两侧壁灯暖晕 + 竖向木纹墙板 */
+#board::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(circle at 13% 16%, rgba(255, 190, 120, .11), transparent 20%),
+    radial-gradient(circle at 87% 16%, rgba(255, 190, 120, .09), transparent 20%),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, .06) 0 2px, transparent 2px 11vw);
+  opacity: .85;
+}
+
+/* ================= 立体麻将桌（金边绿呢 + 桌沿厚度） ================= */
+#table {
+  position: absolute; z-index: 1; pointer-events: none;
+  top: 12vh; bottom: 22vh; left: 10vh; right: 10vh;
+  border-radius: 7vh / 5vh;
+  background: radial-gradient(ellipse at 50% 40%, #1c8060 0%, #12694b 48%, #0a4a34 100%);
+  border: .9vh solid #3b2614;
+  box-shadow:
+    0 0 0 .35vh #cba34d,
+    0 0 0 1.15vh #6b4823,
+    0 1.7vh 0 #2a1a0e,
+    0 2.6vh 2.6vh rgba(0, 0, 0, .58),
+    inset 0 0 6vh rgba(0, 0, 0, .4),
+    inset 0 0 0 .5vh rgba(235, 208, 145, .16);
+}
+/* 桌面内金线 + 细微呢纹 */
+#table::after {
+  content: ''; position: absolute; inset: 1.7vh; border-radius: 5vh / 3.5vh;
+  border: 1px solid rgba(235, 208, 145, .22);
+  background: repeating-linear-gradient(45deg, rgba(255, 255, 255, .014) 0 3px, transparent 3px 15px);
 }
 
 /* ================= 座位 ================= */
@@ -47,24 +80,45 @@ html, body {
   background: linear-gradient(to top, rgba(201, 161, 90, .14), transparent 70%);
 }
 
-/* 玩家信息条 */
+/* 玩家信息胶囊：头像 + 昵称 + 金币 + 定缺（参照欢乐麻将） */
 .pinfo {
   display: flex; align-items: center; justify-content: center;
-  font-size: 11px; line-height: 1.4; color: #cfe3d6;
+  font-size: 11px; line-height: 1.2; color: #f3e6c8;
   white-space: nowrap;
+  padding: 3px 9px 3px 3px;
+  background: linear-gradient(180deg, rgba(38, 28, 18, .92), rgba(20, 14, 9, .92));
+  border: 1px solid rgba(201, 161, 90, .55);
+  border-radius: 22px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 235, 190, .18);
 }
-.pinfo .pname { font-weight: 600; margin-right: 5px; }
-.pinfo .pscore { font-size: 11px; color: #9fb2a6; }
-.pinfo .pscore.up { color: #7ee0a8; }
+.pavatar {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; margin-right: 6px;
+  border-radius: 50%; font-size: 14px;
+  background: linear-gradient(150deg, #4a7fb5, #254d78);
+  border: 1.5px solid #e8cf94;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .5);
+  flex: 0 0 auto;
+}
+.pinfo .pname { font-weight: 600; margin-right: 5px; max-width: 9vw; overflow: hidden; text-overflow: ellipsis; }
+.pinfo .pscore { font-size: 11px; color: #ffe08a; display: inline-flex; align-items: center; }
+.pinfo .pscore::before {
+  content: ''; display: inline-block; width: 10px; height: 10px; margin-right: 3px;
+  border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffe98a, #d99b28);
+  border: 1px solid #a86d12; box-shadow: 0 0 3px rgba(255, 210, 100, .6);
+}
+.pinfo .pscore.up { color: #ffe08a; }
 .pinfo .pscore.down { color: #ff9a8a; }
 .pinfo .plack {
-  margin-left: 5px; padding: 0 4px; border-radius: 3px;
-  background: rgba(201, 161, 90, .18); color: #e2c98d; font-size: 10px;
+  margin-left: 6px; padding: 1px 4px; border-radius: 3px;
+  background: linear-gradient(180deg, #e8dcc0, #cbb98f); color: #6b3a16;
+  border: 1px solid #a8894e; font-size: 10px; font-weight: 700;
 }
 .pinfo .pwin {
   margin-left: 5px; padding: 0 4px; border-radius: 3px;
-  background: rgba(200, 60, 50, .8); color: #fff; font-size: 10px;
+  background: rgba(200, 60, 50, .9); color: #fff; font-size: 10px;
 }
+.seat-self .pinfo { background: linear-gradient(180deg, rgba(60, 42, 20, .94), rgba(30, 20, 10, .94)); border-color: #e2c37a; }
 .ting { margin-left: 6px; font-size: 10px; color: #8fd8ff; }
 .ting.on {
   color: #06201a; background: #8fd8ff; padding: 0 5px; border-radius: 3px; font-weight: 600;
@@ -157,6 +211,7 @@ html, body {
 /* ================= 中央牌河：四边形（谁出的摆谁面前） ================= */
 #center {
   position: absolute; top: 15vh; bottom: 27vh; left: 12vw; right: 12vw;
+  z-index: 2;
   display: grid;
   grid-template-columns: 24% 52% 24%;
   grid-template-rows: 28% 44% 28%;
@@ -183,6 +238,34 @@ html, body {
   flex-direction: column; flex-wrap: nowrap; align-items: center; justify-content: flex-start;
   max-height: 100%;
 }
+
+/* 中央筹码盘：参照欢乐麻将局中圆盘 */
+#centerPlate {
+  grid-area: 2 / 2;
+  align-self: center; justify-self: center;
+  width: min(15vh, 15vw); height: min(15vh, 15vw);
+  border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 38%, rgba(24, 120, 88, .96), rgba(8, 54, 38, .96) 72%);
+  border: 2px solid rgba(235, 208, 145, .85);
+  box-shadow:
+    0 0 0 4px rgba(9, 52, 37, .9),
+    0 0 0 5px rgba(201, 161, 90, .55),
+    0 6px 16px rgba(0, 0, 0, .6),
+    inset 0 0 14px rgba(0, 0, 0, .45),
+    inset 0 2px 2px rgba(255, 255, 255, .16);
+  position: relative;
+}
+#centerPlate .plate-title {
+  font-size: 10px; letter-spacing: 2px; color: #ffe4a8; font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .7);
+}
+#centerPlate b {
+  font-size: min(4.6vh, 5vw); line-height: 1.05; font-weight: 800; color: #fff2c4;
+  text-shadow: 0 2px 0 #a9791f, 0 3px 6px rgba(0, 0, 0, .6);
+}
+#centerPlate .plate-sub { font-size: 9px; color: #bcd6c2; letter-spacing: 1px; }
+#centerPlate.low b { color: #ff9a80; text-shadow: 0 2px 0 #8c2b1c, 0 3px 6px rgba(0, 0, 0, .6); }
 
 /* 左上角 HUD：剩余张数 + 难度 + 退出，不挡牌河 */
 #hud {

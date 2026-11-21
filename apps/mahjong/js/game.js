@@ -78,10 +78,15 @@
     var names = G.auto
       ? ['东家 · 阿发', '南家 · 小满', '西家 · 老陈', '北家 · 幺妹']
       : ['你', '下家 · 小满', '对家 · 老陈', '上家 · 幺妹'];
+    var coins = [3900, 6340, 12900, 6074];
     for (var i = 0; i < 4; i++) {
+      var nm = names[i];
+      var short = nm.split('·').pop().trim();
       G.players.push({
         seat: i,
-        name: names[i],
+        name: nm,
+        avatar: short.charAt(0),
+        coins: coins[i],
         isHuman: !G.auto && i === 0,
         hand: [],
         melds: [],

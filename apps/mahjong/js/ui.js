@@ -20,6 +20,12 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
+  /* 金币数：过万显示 x.xx万，跟欢乐麻将一致 */
+  function fmtCoins(n) {
+    n = Math.max(0, Math.round(n));
+    if (n >= 10000) return (n / 10000).toFixed(2) + '万';
+    return String(n);
+  }
 
   /* ---------------- 牌面 SVG ----------------
    * 排列按通行麻将牌面，不再一律用规整网格：
@@ -164,8 +170,9 @@
     if (!el) return;
     var h = '';
     h += '<div class="pinfo' + (p.won ? ' won' : '') + '">';
-    h += '<span class="pname">' + esc(p.name) + '</span>';
-    h += '<span class="pscore ' + (p.score > 0 ? 'up' : (p.score < 0 ? 'down' : '')) + '">' + (p.score > 0 ? '+' : '') + p.score + '</span>';
+    h += '<span class="pavatar">' + esc(p.avatar || p.name.charAt(0)) + '</span>';
+    h += '<span class="pname">' + esc(p.name.split('·').pop().trim()) + '</span>';
+    h += '<span class="pscore ' + (p.score > 0 ? 'up' : (p.score < 0 ? 'down' : '')) + '">' + fmtCoins(p.coins + p.score) + '</span>';
     if (p.lack >= 0) h += '<span class="plack">缺' + R.SUIT_CH[p.lack] + '</span>';
     if (p.won) h += '<span class="pwin">' + esc(p.winInfo ? p.winInfo.names.join('+') : '胡') + '</span>';
     h += '</div>';
@@ -190,8 +197,9 @@
     var el = $('seat-self');
     var h = '';
     h += '<div class="pinfo">';
+    h += '<span class="pavatar">我</span>';
     h += '<span class="pname">你</span>';
-    h += '<span class="pscore ' + (p.score > 0 ? 'up' : (p.score < 0 ? 'down' : '')) + '">' + (p.score > 0 ? '+' : '') + p.score + '</span>';
+    h += '<span class="pscore ' + (p.score > 0 ? 'up' : (p.score < 0 ? 'down' : '')) + '">' + fmtCoins(p.coins + p.score) + '</span>';
     if (p.lack >= 0) h += '<span class="plack">缺' + R.SUIT_CH[p.lack] + '</span>';
     if (p.won) h += '<span class="pwin">' + esc(p.winInfo ? p.winInfo.names.join('+') + ' ' + p.winInfo.score + '分' : '胡') + '</span>';
     h += '<span class="ting" id="tingTip"></span>';
@@ -275,6 +283,10 @@
     var h = '<span class="clabel">剩余</span><b>' + left + '</b><span class="clabel">张</span>';
     el.innerHTML = h;
     el.className = left <= 16 ? 'low' : '';
+    var plate = $('centerPlate');
+    var plateNum = $('centerPlateNum');
+    if (plateNum) plateNum.textContent = left;
+    if (plate) plate.className = left <= 16 ? 'low' : '';
   }
 
   function render(G) {
