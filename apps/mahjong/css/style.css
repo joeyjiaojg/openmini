@@ -214,7 +214,7 @@ html, body {
   z-index: 2;
   display: grid;
   grid-template-columns: 24% 52% 24%;
-  grid-template-rows: 28% 44% 28%;
+  grid-template-rows: 23% 54% 23%;
   border-radius: 8px;
 }
 /* 对家→上边，下家→右边，上家→左边，自己→下边，中间留空（与座位左右一致） */
@@ -224,7 +224,7 @@ html, body {
 #river-0 { grid-area: 3 / 2; }
 .river {
   padding: 2px;
-  overflow: hidden;
+  overflow: visible; z-index: 3;
   display: flex; flex-direction: column; align-items: center;
 }
 .river .rlabel {
@@ -238,6 +238,9 @@ html, body {
   flex-direction: column; flex-wrap: nowrap; align-items: center; justify-content: flex-start;
   max-height: 100%;
 }
+/* 牌河叠放量由 JS 按牌数动态设置（见 ui.js layoutRivers）：牌少不叠、牌多压紧，
+ * 保证牌不被裁切、也不过度重叠。CSS 这里只兜底清掉默认间距。 */
+#river-3 .rcards .tile, #river-1 .rcards .tile { margin-right: 0; }
 
 /* 中央筹码盘：参照欢乐麻将局中圆盘 */
 #centerPlate {

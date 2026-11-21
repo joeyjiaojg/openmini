@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 小盒子的 WebView 全部加载 https://*.apps.local 虚拟域名（本地拦截，不走真实网络），
+         唯一的真实网络请求是「链接装包」里用户主动输入的 URL。
+         cleartext 保持 true 是为了兼容 http 网盘/局域网直链（用户明确需要的功能），
+         但通过收紧信任锚，只信任系统预置 CA，防止有人诱导用户安装恶意根证书后
+         对 https 装包做中间人攻击。 -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

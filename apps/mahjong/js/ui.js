@@ -273,6 +273,39 @@
       h += '</div>';
       el.innerHTML = h;
     }
+    layoutRivers();
+  }
+
+  /* 牌河按牌数自适应压紧：放得下就不叠；放不下时把每张牌压到只露出约 55%，
+   * 这样弃牌再多（血战到底一家可打 20+ 张）也留在牌河格内，不会被桌沿/手牌区
+   * 裁切或盖住。竖排压 top，横排压 left。 */
+  function layoutRivers() {
+    var sides = [
+      { id: 'river-3', v: true }, { id: 'river-1', v: true },
+      { id: 'river-0', v: false }, { id: 'river-2', v: false }
+    ];
+    for (var k = 0; k < sides.length; k++) {
+      var box = $(sides[k].id);
+      if (!box) continue;
+      var cards = box.querySelectorAll('.rcards .tile');
+      if (!cards.length) continue;
+      var first = cards[0];
+      var size = sides[k].v ? first.offsetHeight : first.offsetWidth;
+      var avail = sides[k].v ? box.clientHeight : box.clientWidth;
+      var n = cards.length;
+      var step = size;
+      if (n > 1 && size * n > avail) {
+        // 按可用高度精确压紧；露出下限 38%（弃牌叠摆，顶部够辨花色即可）
+        // 不能设太高下限，否则牌多时仍会溢出被桌沿/手牌区盖住。
+        var fit = (avail - size * 0.55) / (n - 1);
+        step = Math.max(size * 0.38, Math.min(size, fit));
+      }
+      var mg = step - size; // <=0
+      for (var i = 1; i < n; i++) {
+        cards[i].style.marginTop = sides[k].v ? (mg + 'px') : '';
+        cards[i].style.marginLeft = sides[k].v ? '' : (mg + 'px');
+      }
+    }
   }
 
   function renderCenter(G) {

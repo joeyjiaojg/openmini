@@ -129,6 +129,33 @@ WebView 只加载真实存在的 `*.apps.local` 页面（启动器 + 已装应�
 
 配套宿主改动（v1.1.2）：`AppStore.cspOf()` + `MainActivity` 应用资源分支按 HTML 响应附加 CSP 头与 `Referrer-Policy: no-referrer`。
 
+## 第三方静态扫描报告核对（v1.1.4，2026-11-21）
+
+外部扫描工具给出一份高危清单。逐条对照源码后，**绝大多数是通用模板命中，本工程不存在**：
+
+| 报告命中 | 核对结论 |
+|---|---|
+| IMEI / IMSI / getDeviceId×7 / READ_PHONE_STATE | ❌ 本工程无此权限、无此 API |
+| 应用列表 / getInstalledPackages×3 / QUERY_ALL_PACKAGES | ❌ 无 |
+| READ_SMS / READ_CONTACTS / CAMERA / RECORD_AUDIO / ACCESS_FINE_LOCATION / getLastKnownLocation×12 | ❌ 无这些权限（manifest 仅 INTERNET 一个） |
+| 友盟 / 个推 / 字节穿山甲 / 支付宝 / 腾讯 Bugly（5 个 SDK） | ❌ 零第三方依赖，build.gradle 无任何 implementation |
+| `http://log.demo-shop.com/collect` 等明文域名 | ❌ demo 示例域名，工程内不存在 |
+| `sk_live_` 疑似支付私钥 | ❌ 无；签名密钥在仓库外 local.properties，不进包 |
+| addJavascriptInterface×2 | ❌ 源码只有注释提到"不注册"，实际走 onJsPrompt 桥 |
+| DexClassLoader / OkHttpClient×15 | ❌ 无；网络用原生 HttpURLConnection |
+| allowBackup=true | ❌ 报告过时，manifest 早已 `allowBackup=false` |
+| targetSdkVersion=27 | ❌ 报告过时，实际 34 |
+| debuggable=true | ❌ 报告过时/模板值，release 构建默认且显式 false |
+
+真实相关、已加固的两条：
+
+| 报告项 | 处理 |
+|---|---|
+| **usesCleartextTraffic / 明文传输** | ⚠️→✅ 保留 http 装包（用户明确要的网盘/局域网直链能力），但新增 `res/xml/network_security_config.xml`，信任锚收紧为只信任系统 CA、不信任用户安装的根证书，堵住"诱导装恶意 CA → MITM https 装包"路径。WebView 侧全部是 `https://*.apps.local` 本地拦截，不外发明文。 |
+| **debuggable** | ✅ release buildType 显式 `debuggable false`（不在 manifest 写死，避免 lint HardcodedDebugMode 错误；由构建类型自动注入，release 即 false）。 |
+
+未采纳项说明：`targetSdk` 停在 34 —— 本应用是自用侧载 APK，不上架 Google Play，无需追随 Play 的 API 36 门槛；升 36 需另装 SDK 且对本地 WebView 宿主无实际收益。
+
 ## 上报漏洞
 
 发现安全问题请开 [issue](https://github.com/joeyjiaojg/openmini/issues) 或私聊仓库作者，
