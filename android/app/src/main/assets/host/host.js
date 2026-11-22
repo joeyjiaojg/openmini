@@ -4,6 +4,8 @@
   var apps = [];
   var marketApps = [];
   var marketLoaded = false;
+  var marketQuery = '';      // 市场搜索关键词
+  var marketCategory = '';   // 市场分类筛选，''=全部
   var selfUpdate = null;      // 宿主自升级检查结果
   var selfChecking = false;
   var selfDownloading = false;
@@ -110,11 +112,52 @@
     return wrap;
   }
 
+  // 应用当前生效的分类：只有 catalog 带 category 时才显示分类栏
+  function marketCategories() {
+    var seen = {};
+    var cats = [];
+    for (var i = 0; i < marketApps.length; i++) {
+      var c = marketApps[i].category;
+      if (c && !seen[c]) { seen[c] = 1; cats.push(c); }
+    }
+    return cats;
+  }
+
+  function appDisplayName(it) {
+    return it.name || prettyName(it.id);
+  }
+
+  function renderMarketCats() {
+    var bar = $('mktCats');
+    if (!bar) return;
+    while (bar.firstChild) bar.removeChild(bar.firstChild);
+    var cats = marketCategories();
+    // 只有一个或零个分类时不显示分类栏，避免无意义的一行
+    if (cats.length < 2) { bar.style.display = 'none'; return; }
+    bar.style.display = '';
+    var all = ['',].concat(cats);
+    for (var i = 0; i < all.length; i++) {
+      (function (cat) {
+        var b = document.createElement('button');
+        b.className = 'mkt-cat' + (marketCategory === cat ? ' on' : '');
+        b.textContent = cat === '' ? '全部' : cat;
+        b.addEventListener('click', function () {
+          marketCategory = cat;
+          renderMarketCats();
+          renderMarket();
+        }, false);
+        bar.appendChild(b);
+      })(all[i]);
+    }
+  }
+
   function renderMarket() {
     var box = $('marketList');
     if (!box) return;
     while (box.firstChild) box.removeChild(box.firstChild);
     var tip = $('marketTip');
+    var tools = $('mktTools');
+    if (tools) tools.style.display = 'none';
     if (!marketLoaded) {
       if (tip) tip.textContent = '正在获取最新应用…';
       return;
@@ -124,21 +167,35 @@
       return;
     }
     if (tip) tip.textContent = '小盒子官方市场 · 点一下就装';
+    if (tools) tools.style.display = '';
+    renderMarketCats();
+
+    var q = (marketQuery || '').trim().toLowerCase();
+    var shown = 0;
     for (var i = 0; i < marketApps.length; i++) {
       (function (it) {
+        // 分类过滤
+        if (marketCategory && it.category !== marketCategory) return;
+        // 关键词过滤：名称 / id / 描述 / 分类
+        if (q) {
+          var hay = [it.name, prettyName(it.id), it.id, it.desc, it.category]
+            .join(' ').toLowerCase();
+          if (hay.indexOf(q) < 0) return;
+        }
+        shown++;
         var row = document.createElement('div');
         row.className = 'mkt-item';
 
         var ico = document.createElement('div');
         ico.className = 'mkt-ico';
-        ico.textContent = (it.id || '?').charAt(0).toUpperCase();
+        ico.textContent = it.icon || (it.id || '?').charAt(0).toUpperCase();
         row.appendChild(ico);
 
         var mid = document.createElement('div');
         mid.className = 'mkt-mid';
         var nm = document.createElement('div');
         nm.className = 'mkt-nm';
-        nm.textContent = prettyName(it.id);
+        nm.textContent = appDisplayName(it);
         mid.appendChild(nm);
         var sub = document.createElement('div');
         sub.className = 'mkt-sub';
@@ -153,6 +210,12 @@
           sub.textContent = 'v' + (it.version || '?') + ' · ' + fmtSize(it.size);
         }
         mid.appendChild(sub);
+        if (it.desc) {
+          var ds = document.createElement('div');
+          ds.className = 'mkt-desc';
+          ds.textContent = it.desc;
+          mid.appendChild(ds);
+        }
         row.appendChild(mid);
 
         var btn;
@@ -173,6 +236,12 @@
         row.appendChild(btn);
         box.appendChild(row);
       })(marketApps[i]);
+    }
+    if (!shown) {
+      var none = document.createElement('div');
+      none.className = 'mkt-none';
+      none.textContent = '没有匹配的应用';
+      box.appendChild(none);
     }
   }
 
@@ -220,7 +289,7 @@
     openSheet();
     $('prog').className = 'prog on';
     $('progBar').style.width = '0%';
-    $('msg').textContent = '正在下载 ' + prettyName(it.id) + '…';
+    $('msg').textContent = '正在下载 ' + appDisplayName(it) + '…';
     h.installUrl(it.url);
   }
 
@@ -411,6 +480,11 @@
   // ---------- 交互绑定 ----------
 
   function bind() {
+    $('mktSearch').addEventListener('input', function () {
+      marketQuery = this.value;
+      renderMarket();
+    }, false);
+
     $('add').addEventListener('click', function () {
       openSheet();
       refreshLan();

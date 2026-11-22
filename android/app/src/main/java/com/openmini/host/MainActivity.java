@@ -71,6 +71,9 @@ public class MainActivity extends Activity {
      * 走 gh-proxy 前缀，国内可直连；API 拿到的 browser_download_url 会再套一层前缀。 */
     private static final String MARKET_API =
             "https://gh-proxy.org/https://api.github.com/repos/joeyjiaojg/openmini-market/releases/latest";
+    /* 市场应用补充元数据（名称/描述/分类/图标），拉取失败时降级为文件名解析，不影响安装。 */
+    private static final String MARKET_CATALOG_API =
+            "https://gh-proxy.org/https://raw.githubusercontent.com/joeyjiaojg/openmini-market/main/catalog.json";
     private static final String GH_PROXY = "https://gh-proxy.org/";
 
     private static final String CSP_LAUNCHER =
@@ -527,6 +530,20 @@ public class MainActivity extends Activity {
             public void run() {
                 String body;
                 try {
+                    // 先取补充元数据（名称/描述/分类/图标），失败不影响主流程。
+                    final JSONObject catalog = new JSONObject();
+                    try {
+                        JSONObject catRoot = new JSONObject(fetch(MARKET_CATALOG_API));
+                        JSONArray catApps = catRoot.optJSONArray("apps");
+                        if (catApps != null) {
+                            for (int k = 0; k < catApps.length(); k++) {
+                                JSONObject c = catApps.getJSONObject(k);
+                                String cid = c.optString("id", "").toLowerCase(Locale.US);
+                                if (cid.length() > 0) catalog.put(cid, c);
+                            }
+                        }
+                    } catch (Exception ignore) { }
+
                     body = fetch(MARKET_API);
                     JSONObject rel = new JSONObject(body);
                     String tag = rel.optString("tag_name", "");
@@ -546,11 +563,22 @@ public class MainActivity extends Activity {
                             // 从文件名猜 id/版本：mahjong-v1.2.0.zip → mahjong / 1.2.0
                             String stem = name.substring(0, name.length() - 4);
                             int dash = stem.lastIndexOf("-v");
+                            String appId;
                             if (dash > 0) {
-                                item.put("id", stem.substring(0, dash).toLowerCase(Locale.US));
+                                appId = stem.substring(0, dash).toLowerCase(Locale.US);
                                 item.put("version", stem.substring(dash + 2));
                             } else {
-                                item.put("id", stem.toLowerCase(Locale.US));
+                                appId = stem.toLowerCase(Locale.US);
+                            }
+                            item.put("id", appId);
+                            // 合并 catalog 元数据：显示名/描述/分类/图标/精确版本号。
+                            // catalog 里版本更可靠（versionCode 用于覆盖升级判断），故覆盖文件名猜测值。
+                            JSONObject meta = catalog.optJSONObject(appId);
+                            if (meta != null) {
+                                String[] keys = {"name", "desc", "category", "icon", "version", "versionCode"};
+                                for (String k : keys) {
+                                    if (meta.has(k)) item.put(k, meta.opt(k));
+                                }
                             }
                             out.put(item);
                         }
