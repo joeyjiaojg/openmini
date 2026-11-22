@@ -1,0 +1,15 @@
+{
+  "name": "openmini-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OpenMini 小盒子 Windows 免安装版",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "node build-portable.js"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.18",
+    "electron": "^37.10.3"
+  }
+}
