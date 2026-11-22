@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#14110E">
+<title>小盒子</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>小盒子</h1>
+    <p class="sub">OpenMini · 装一次，之后只装包</p>
+  </header>
+
+  <section id="market">
+    <div class="mkt-head">
+      <h2>应用市场</h2>
+      <span class="mkt-badge">官方</span>
+    </div>
+    <p class="mkt-tip" id="marketTip">正在获取最新应用…</p>
+    <div class="mkt-tools" id="mktTools">
+      <input id="mktSearch" class="mkt-search" type="search" placeholder="搜索应用名称 / 描述…" autocomplete="off">
+      <div class="mkt-cats" id="mktCats"></div>
+    </div>
+    <div id="marketList" class="mkt-list"></div>
+  </section>
+
+  <div class="section-label">我的应用</div>
+  <div id="grid" class="grid"></div>
+
+  <div id="empty" class="empty">
+    <div class="em-t">盒子还是空的</div>
+    <div class="em-s">点下面三种方式都能装</div>
+  </div>
+
+  <button id="add" class="add">＋ 装一个应用</button>
+
+  <section id="updater" class="upd">
+    <div class="upd-head">
+      <span class="upd-ico">↻</span>
+      <div class="upd-mid">
+        <div class="upd-title">小盒子更新</div>
+        <div class="upd-sub" id="updSub">检查中…</div>
+      </div>
+      <button id="updBtn" class="upd-btn ghost">检查</button>
+    </div>
+    <div class="upd-prog" id="updProg"><div class="bar" id="updProgBar"></div></div>
+    <div class="upd-notes" id="updNotes"></div>
+  </section>
+
+  <div id="foot" class="foot"></div>
+</div>
+
+<div id="mask" class="mask"></div>
+
+<div id="sheet" class="sheet">
+  <div class="grab"></div>
+  <h2>装一个应用</h2>
+  <div class="tabs">
+    <button class="tab on" data-tab="link">链接</button>
+    <button class="tab" data-tab="file">手机文件</button>
+    <button class="tab" data-tab="lan">局域网</button>
+  </div>
+
+  <div class="panes">
+    <div class="pane on" id="pane-link">
+      <input id="url" type="url" inputmode="url" placeholder="https://…/game-v1.zip" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button id="doLink" class="go">下载并安装</button>
+      <p class="hint">支持 http / https 直链。丢到 GitHub Release 或网盘直链都行。</p>
+    </div>
+
+    <div class="pane" id="pane-file">
+      <button id="doPick" class="go">从手机里选 zip</button>
+      <p class="hint">微信 / QQ 收到的包先存到手机，再来这里选。装过一次后，以后直接点 zip 也能装。</p>
+    </div>
+
+    <div class="pane" id="pane-lan">
+      <div class="lanbox" id="lanBox">未开启</div>
+      <button id="doLan" class="go">开启上传通道</button>
+      <p class="hint">手机和电脑连同一个 WiFi，电脑浏览器打开上面的地址，把 zip 拖进去就装好了。</p>
+    </div>
+  </div>
+
+  <div class="prog" id="prog"><div class="bar" id="progBar"></div></div>
+  <div class="msg" id="msg"></div>
+</div>
+
+<div id="dlg" class="dlg">
+  <div class="dlg-c">
+    <p id="dlgText"></p>
+    <div class="dlg-b">
+      <button id="dlgNo">取消</button>
+      <button id="dlgYes" class="danger">删除</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="host.js"></script>
+</body>
+</html>
