@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-make-pkg.py — 把一个 H5 目录打成小游盒应用包（.zip）
+make-pkg.py — 把一个 H5 目录打成小盒子应用包（.zip）
 
 用法：
   python make-pkg.py <源目录> [--id xiangqi] [--name 楚汉象棋] [--version 1.8.0]
