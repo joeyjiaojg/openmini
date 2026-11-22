@@ -49,6 +49,8 @@ OpenMini 把**运行时**和**内容**拆开：
 
 从 [Releases](https://github.com/joeyjiaojg/openmini/releases) 下载 `OpenMini-v1.1.0.apk`，装到手机上（minSdk 21 / Android 5.0+）。首次打开**默认已装好「楚汉象棋」**（人机对战 / 机器对战观战 / 三档难度），拿来就能玩。
 
+**Windows 用户**：同一发布页下载 `OpenMini-Windows-v1.0.0-portable.zip`，解压双击 `OpenMini.exe` 即用——免安装、不写注册表、**默认不预装任何应用**，在应用市场里点一下就装。详见 [windows/README.md](windows/README.md)。
+
 装新应用：
 
 | 方式 | 怎么做 | 适用场景 |
@@ -84,14 +86,15 @@ OpenMini 把**运行时**和**内容**拆开：
 
 细则见 [docs/PACKAGE-FORMAT.md](docs/PACKAGE-FORMAT.md)：zip 可以是「根目录平铺」或「只有一层子目录」（直接把文件夹压缩也认）；单包 40 MB 上限；解压做 zip-slip 校验。
 
-打包（应用源码在 [openmini-apps](https://github.com/joeyjiaojg/openmini-apps) 仓库，本仓库不再存放应用源码）：
+打包：
 
 ```bash
-git clone https://github.com/joeyjiaojg/openmini-apps
-python openmini-apps/tools/make-pkg.py openmini-apps/xiangqi -o android/app/src/main/assets/apps/xiangqi.zip
+python tools/make-pkg.py apps/demo                    # → dist/demo-v1.0.0.zip
+python tools/make-pkg.py apps/demo --version 1.1.0 --version-code 2
+python tools/make-pkg.py apps/xiangqi -o android/app/src/main/assets/apps/xiangqi.zip
 ```
 
-放进 `android/app/src/main/assets/apps/*.zip` 的包会在**首次启动**时自动安装（只播一次，用户删掉后不会复活）。仓库里现在内置了 `xiangqi.zip`，所以新装的盒子打开就有象棋。
+放进 `android/app/src/main/assets/apps/*.zip` 的包会在**首次启动**时自动安装（只播一次，用户删掉后不会复活）。仓库里现在内置了 `xiangqi.zip`（源码在 `apps/xiangqi/`），所以新装的盒子打开就有象棋。
 
 ## 包里跑的是什么代码？能装别人的小程序吗？
 
