@@ -1,8 +1,0 @@
-{
-  "id": "demo",
-  "name": "弹珠屏保",
-  "version": "1.0.0",
-  "versionCode": 1,
-  "entry": "index.html",
-  "description": "装包链路验证用的小玩具"
-}
