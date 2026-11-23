@@ -1,27 +1,40 @@
-/* OpenMini Windows 桌面宿主（免安装绿色版）
+/* OpenMini 桌面宿主（Windows / Linux 免安装绿色版）
  * 与 Android 版共用一套 host 页面和 zip 包格式：
  *   - om://host.apps.local/        启动器（host/）
  *   - om://<id>.apps.local/*       应用包（apps/<id>/）
  *   不同 hostname = 不同 origin，localStorage 存档天然隔离。
- * 默认不预装任何应用；数据写在 exe 同级的 data/ 目录，换机拷走即可。
+ * 默认不预装任何应用；数据统一放在用户目录 ~/.openmini
+ * （程序目录放 portable.txt 可切回「数据跟 exe 走」的便携模式）。
  */
 'use strict';
 
 const { app, BrowserWindow, ipcMain, protocol, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const https = require('https');
 const AdmZip = require('adm-zip');
+const Paths = require('./paths');
 
 const IS_DEV = !app.isPackaged;
 const SRC = __dirname;
 const ROOT = path.dirname(SRC);                       // windows/
-// 免安装：数据跟 exe 走；开发时写到 windows/data-dev/
-const DATA = IS_DEV ? path.join(ROOT, 'data-dev') : path.join(path.dirname(app.getPath('exe')), 'data');
+const DATA_INFO = Paths.resolve({ isDev: IS_DEV, devRoot: ROOT });
+const DATA = DATA_INFO.dir;
 const APPS = path.join(DATA, 'apps');
 const STAGE = path.join(DATA, 'stage');
-const HOST_VER = '1.0.0';
+const HOST_VER = '1.1.0';
+const PLATFORM_NAME = process.platform === 'linux' ? '小盒子 Linux 版' : '小盒子 Windows 版';
+
+// Linux 绿色版无法把 chrome-sandbox 设成 setuid root；未配置时降级为 --no-sandbox，
+// 否则 Chromium 会直接拒绝启动。若用户已 sudo 配置过 setuid，则保留完整沙箱。
+if (process.platform === 'linux') {
+  try {
+    const sb = path.join(path.dirname(process.execPath), 'chrome-sandbox');
+    if (!(fs.statSync(sb).mode & 0o4000)) app.commandLine.appendSwitch('no-sandbox');
+  } catch (e) {
+    app.commandLine.appendSwitch('no-sandbox');
+  }
+}
 
 const GH_PROXY = 'https://gh-proxy.org/';
 const MARKET_API = GH_PROXY + 'https://api.github.com/repos/joeyjiaojg/openmini-market/releases/latest';
@@ -33,6 +46,8 @@ const appWins = {};     // id -> BrowserWindow
 let marketCache = null; // {ts, apps, tag}
 
 function ensureDirs() {
+  // 升级自 v1.0.x 时，把程序目录下旧的 data/ 搬到 ~/.openmini（失败不阻塞启动）
+  try { Paths.migrate(DATA_INFO); } catch (e) { }
   [DATA, APPS, STAGE].forEach(function (d) {
     try { fs.mkdirSync(d, { recursive: true }); } catch (e) { }
   });
@@ -312,7 +327,10 @@ function handleCall(payload) {
   const a = payload && payload.a;
   switch (m) {
     case 'apps': return JSON.stringify(installed());
-    case 'meta': return JSON.stringify({ version: HOST_VER, name: '小盒子 Windows 版', lanRunning: false, platform: 'windows' });
+    case 'meta': return JSON.stringify({
+      version: HOST_VER, name: PLATFORM_NAME, lanRunning: false,
+      platform: process.platform, dataDir: DATA, dataMode: DATA_INFO.mode
+    });
     case 'market': fetchMarket(false); return '';
     case 'updateCheck': return JSON.stringify({ ok: true, hasUpdate: false, version: HOST_VER, local: HOST_VER, size: 0, notes: '' });
     case 'updateInstall': return JSON.stringify({ ok: false, msg: '桌面版请从 GitHub Releases 手动更新' });

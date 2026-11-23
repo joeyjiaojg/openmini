@@ -49,7 +49,7 @@ OpenMini 把**运行时**和**内容**拆开：
 
 从 [Releases](https://github.com/joeyjiaojg/openmini/releases) 下载 `OpenMini-v1.1.0.apk`，装到手机上（minSdk 21 / Android 5.0+）。首次打开**默认已装好「楚汉象棋」**（人机对战 / 机器对战观战 / 三档难度），拿来就能玩。
 
-**Windows 用户**：同一发布页下载 `OpenMini-Windows-v1.0.0-portable.zip`，解压双击 `OpenMini.exe` 即用——免安装、不写注册表、**默认不预装任何应用**，在应用市场里点一下就装。详见 [windows/README.md](windows/README.md)。
+**桌面用户**：同一发布页下载 `OpenMini-Windows-v1.1.0-portable.zip`（Windows）或 `OpenMini-Linux-v1.0.0-x64.tar.gz`（Debian/Ubuntu，解压后跑 `install-desktop.sh` 即可双击启动）——免安装、不写注册表、**默认不预装任何应用**，在应用市场里点一下就装。桌面版数据统一放用户目录 `~/.openmini/`（Windows 为 `C:\Users\<你>\.openmini\`），旧版 `data/` 会自动迁移；需要 U 盘整体拷走时在 exe 旁建空文件 `portable.txt`。详见 [windows/README.md](windows/README.md)。
 
 装新应用：
 
@@ -152,6 +152,10 @@ android/                          Gradle 工程（com.openmini.host）
 apps/
   demo/                           示例应用：弹珠屏保（单文件 canvas 动画，~3 KB）
   xiangqi/                        示例应用：楚汉象棋（引擎 + 棋盘 UI）
+windows/                          Windows / Linux 桌面绿色版（Electron 宿主 + 打包脚本）
+  src/paths.js                    数据目录解析与旧数据迁移（~/.openmini）
+  build-portable.js               Windows zip 打包
+  build-linux.py                  Linux tar.gz 打包（含 .desktop）
 tools/make-pkg.py                 目录 → 应用包
 docs/                             包格式说明、截图
 ```

@@ -35,8 +35,8 @@
     t._timer = setTimeout(function () { t.className = 'toast'; }, 2000);
   }
 
-  // 宿主桥：Android 走 prompt() 通道，Windows 桌面版走 Electron preload 暴露的 __om.call。
-  // 只有 https://host.apps.local（Android）或 om://host.apps.local（Windows）这个页面能拿到能力。
+  // 宿主桥：Android 走 prompt() 通道，Windows / Linux 桌面版走 Electron preload 暴露的 __om.call。
+  // 只有 https://host.apps.local（Android）或 om://host.apps.local（桌面版）这个页面能拿到能力。
   // 装进来的应用即使自己调 prompt，也只会收到 forbidden。
   function inHost() {
     var proto = location.protocol;
@@ -46,7 +46,7 @@
 
   function call(m, a) {
     var payload = { m: m, a: a === undefined ? null : a };
-    // Windows 桌面版：preload 注入 window.__om.call（同步 IPC）
+    // 桌面版（Windows / Linux）：preload 注入 window.__om.call（同步 IPC）
     if (window.__om && typeof window.__om.call === 'function') {
       try {
         var w = window.__om.call(payload);
@@ -651,7 +651,7 @@
     if ($('sheet').className.indexOf('on') >= 0) closeSheet();
   };
 
-  // Windows 桌面版：把主进程推来的异步事件转成 BoxUI 回调（Android 由 Java 直接 js() 调用）
+  // 桌面版：把主进程推来的异步事件转成 BoxUI 回调（Android 由 Java 直接 js() 调用）
   if (window.__om && typeof window.__om.onEvent === 'function') {
     window.__om.onEvent(function (ev) {
       if (!ev || !ev.type) return;
