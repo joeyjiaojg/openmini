@@ -31,11 +31,41 @@ header h1 {
 }
 
 header .sub {
-  margin: 7px 0 24px;
+  margin: 7px 0 16px;
   font-size: 12px;
   color: #8C8070;
   letter-spacing: 1px;
 }
+
+/* ---------- 主 Tab：应用市场 / 已装应用 ---------- */
+.main-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 4px;
+  border: 1px solid rgba(201, 161, 90, 0.18);
+  border-radius: 13px;
+  background: rgba(201, 161, 90, 0.05);
+}
+.main-tab {
+  flex: 1;
+  padding: 11px 0;
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: #8C8070;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.main-tab.on {
+  color: #1a140c;
+  background: #C9A15A;
+  font-weight: 600;
+}
+.view { display: none; }
+.view.on { display: block; }
 
 .grid {
   display: grid;
@@ -404,6 +434,18 @@ input[type="url"]:focus {
   background: rgba(201, 161, 90, 0.18); color: #D9B96A;
   border: 1px solid rgba(201, 161, 90, 0.3);
 }
+.mkt-refresh {
+  margin-left: auto;
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: inherit; font-size: 17px; line-height: 1;
+  color: #D9B96A; background: transparent;
+  border: 1px solid rgba(201, 161, 90, 0.3);
+  border-radius: 9px; cursor: pointer;
+}
+.mkt-refresh:active { opacity: .7; }
+.mkt-refresh.spin { animation: mkt-spin .8s linear infinite; opacity: .8; pointer-events: none; }
+@keyframes mkt-spin { to { transform: rotate(360deg); } }
 .mkt-tip {
   margin: 2px 2px 8px; font-size: 11px; color: #8C8070;
 }
