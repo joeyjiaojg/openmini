@@ -5,11 +5,15 @@ import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.util.ArrayMap;
+import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.JsPromptResult;
 import android.webkit.JsResult;
@@ -19,6 +23,8 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
+import android.widget.TextView;
 
 import org.json.JSONObject;
 
@@ -44,6 +50,12 @@ import org.json.JSONArray;
  * 启动器（host.apps.local）负责列表和装包，每个游戏跑在 <id>.apps.local，
  * 因为域名不同 = origin 不同，localStorage 天然隔离，存档互不干扰。
  *
+ * 会话模型（v1.6.4 起）：
+ *  - 启动器一个 WebView 常驻；每个打开的应用各有一个 WebView，切换 = 切可见性，
+ *    不销毁页面 —— 音乐盒这类应用因此能在应用间、甚至整个 app 退到后台时继续放歌。
+ *  - 应用最多同时开 4 个，超出时关掉最久没看的那个。
+ *  - 关闭只能由用户显式触发：主页「已装应用」卡片上的 ✕（任务管理）。
+ *
  * 安全模型：
  *  - 不给任何页面注入 JS 接口。JS→Java 走 prompt() 通道，且只接受来自
  *    https://host.apps.local 这个 origin 的调用 —— 装进来的应用页面即使
@@ -57,6 +69,8 @@ public class MainActivity extends Activity {
     static final String DOMAIN = ".apps.local";
     static final String HOST = "host";
     static final String ID_RE = "[a-z0-9][a-z0-9_-]{0,39}";
+    /** 同时打开的应用 WebView 上限：超出时关最久未看的 */
+    private static final int MAX_OPEN_APPS = 4;
     /** 应用向宿主索取赋能配置的虚拟路径（同源，只能取到自己那份） */
     static final String PART_VAULT = "__om__/vault.json";
     /** 应用侧的同源代理：给没有 CORS 头的公开接口兜底（只放行私有配置里的域名） */
@@ -86,11 +100,15 @@ public class MainActivity extends Activity {
             + "img-src 'self' https: data:; connect-src 'self'; frame-src 'none'; "
             + "object-src 'none'; base-uri 'none'; form-action 'none'";
 
-    private WebView webView;
+    private WebView webView;          // 启动器（host.apps.local），常驻不重载
+    private FrameLayout root;
+    private TextView homeFab;         // 应用内的「主页」悬浮钮（最小化，不退出应用）
+    private final ArrayMap<String, WebView> appViews = new ArrayMap<String, WebView>();
+    private final ArrayMap<String, Long> lastShown = new ArrayMap<String, Long>();
     private AppStore store;
     private Vault vault;
     private MiniServer server;
-    private String currentAppId = null;
+    private String currentAppId = null;   // 当前正在显示的应用（null = 启动器）
     private long lastBackAt = 0;
     private volatile boolean overlayOpen = false;
 
@@ -111,7 +129,82 @@ public class MainActivity extends Activity {
         });
 
         webView = new WebView(this);
-        WebSettings s = webView.getSettings();
+        configureWebView(webView);
+        // WebView 远程调试口：端到端自动化测试用（CDP），发布版也开着——
+        // 需要 adb/USB 权限才能连上，风险面与 adb 本身一致
+        WebView.setWebContentsDebuggingEnabled(true);
+
+        // 多 WebView 会话：启动器 + N 个应用 WebView 叠在同一个 FrameLayout 里，
+        // 切换 = 切可见性，页面都不销毁（音乐盒后台放歌就靠这个）
+        root = new FrameLayout(this);
+        root.addView(webView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        homeFab = new TextView(this);
+        homeFab.setText("⌂");
+        homeFab.setTextSize(16);
+        homeFab.setTextColor(0xFFFFFFFF);
+        homeFab.setGravity(Gravity.CENTER);
+        homeFab.setContentDescription("回到小盒子主页（应用保持运行）");
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(0xB3221C14);
+        homeFab.setBackground(bg);
+        FrameLayout.LayoutParams fabLp = new FrameLayout.LayoutParams(dp(38), dp(38),
+                Gravity.TOP | Gravity.END);
+        fabLp.topMargin = dp(44);
+        fabLp.rightMargin = dp(10);
+        root.addView(homeFab, fabLp);
+        homeFab.setVisibility(View.GONE);
+        homeFab.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                goHome();
+            }
+        });
+
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        setContentView(root);
+
+        // 启动器页面只在这里加载一次，之后 goHome 只是切回它的可见性
+        webView.loadUrl(url(HOST, "/index.html"));
+
+        // 转屏会重建 Activity（manifest 未声明 configChanges）：
+        // 把所有开着的应用 WebView 重建出来，正在看的那个直接显示
+        String saved = b == null ? null : b.getString("omAppId");
+        String openList = b == null ? null : b.getString("omOpenApps");
+        boolean restoredActive = false;
+        if (openList != null) {
+            try {
+                JSONArray arr = new JSONArray(openList);
+                for (int i = 0; i < arr.length(); i++) {
+                    String id = arr.optString(i);
+                    if (id != null && !HOST.equals(id) && id.matches(ID_RE)
+                            && store.get(id) != null && appViews.get(id) == null) {
+                        newAppWebView(id);
+                        if (id.equals(saved)) restoredActive = true;
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (restoredActive) {
+            currentAppId = saved;
+            applyOrientation(store.get(saved));
+            showAppView(saved);
+        } else {
+            currentAppId = null;
+            applyOrientation(null);
+        }
+
+        handleViewIntent(getIntent());
+    }
+
+    private int dp(int v) {
+        return Math.round(getResources().getDisplayMetrics().density * v);
+    }
+
+    private void configureWebView(WebView w) {
+        WebSettings s = w.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
@@ -132,32 +225,34 @@ public class MainActivity extends Activity {
             } catch (Throwable ignored) {
             }
         }
-        webView.setBackgroundColor(0xFF14110E);
-        webView.setWebViewClient(new Client());
-        webView.setWebChromeClient(new Chrome());
+        w.setBackgroundColor(0xFF14110E);
+        w.setWebViewClient(new Client());
+        w.setWebChromeClient(new Chrome());
         // 不注册 addJavascriptInterface：桥走 prompt 通道，按 origin 鉴权
-        webView.setDownloadListener(null);
+        w.setDownloadListener(null);
+    }
 
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
-        setContentView(webView);
-        // 转屏会重建 Activity（manifest 未声明 configChanges），
-        // 重建时把正在用的应用捞回来，直接按新尺寸加载，不走主页
-        String saved = b == null ? null : b.getString("omAppId");
-        if (saved != null && !HOST.equals(saved) && saved.matches(ID_RE) && store.get(saved) != null) {
-            currentAppId = saved;
-            applyOrientation(store.get(saved));
-            webView.loadUrl(url(saved, "/" + store.entryOf(saved)));
-        } else {
-            goHome();
-        }
-
-        handleViewIntent(getIntent());
+    private WebView newAppWebView(String id) {
+        WebView w = new WebView(this);
+        configureWebView(w);
+        root.addView(w, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        w.setVisibility(View.INVISIBLE);
+        w.loadUrl(url(id, "/" + store.entryOf(id)));
+        appViews.put(id, w);
+        lastShown.put(id, System.currentTimeMillis());
+        return w;
     }
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         if (currentAppId != null) outState.putString("omAppId", currentAppId);
+        if (appViews.size() > 0) {
+            JSONArray arr = new JSONArray();
+            for (int i = 0; i < appViews.size(); i++) arr.put(appViews.keyAt(i));
+            outState.putString("omOpenApps", arr.toString());
+        }
     }
 
     @Override
@@ -175,7 +270,76 @@ public class MainActivity extends Activity {
     private void goHome() {
         currentAppId = null;
         applyOrientation(null); // 回启动器一律恢复竖屏
-        if (webView != null) webView.loadUrl(url(HOST, "/index.html"));
+        showAppView(null);
+    }
+
+    /** 切可见性：target=null 表示启动器。应用 WebView 隐藏但不销毁 —— 音乐继续放 */
+    private void showAppView(String id) {
+        WebView target = id == null ? null : appViews.get(id);
+        webView.setVisibility(target == null ? View.VISIBLE : View.INVISIBLE);
+        for (int i = 0; i < appViews.size(); i++) {
+            WebView v = appViews.valueAt(i);
+            boolean active = v == target;
+            v.setVisibility(active ? View.VISIBLE : View.INVISIBLE);
+            if (active) v.onResume();
+        }
+        homeFab.setVisibility(target == null ? View.GONE : View.VISIBLE);
+    }
+
+    /** 运行中应用列表（给启动器做任务管理用） */
+    private String runningJson() {
+        JSONArray arr = new JSONArray();
+        for (int i = 0; i < appViews.size(); i++) {
+            String id = appViews.keyAt(i);
+            JSONObject o = new JSONObject();
+            JSONObject m = store.get(id);
+            try {
+                o.put("id", id);
+                o.put("name", m == null ? id : m.optString("name", id));
+                arr.put(o);
+            } catch (Exception ignored) {
+            }
+        }
+        return arr.toString();
+    }
+
+    private void notifyRunning() {
+        js("window.BoxUI&&BoxUI.onRunning&&BoxUI.onRunning(" + runningJson() + ")");
+    }
+
+    /** 用户显式关闭一个应用（任务管理 ✕）。关掉正在看的那个 → 回主页 */
+    private void closeApp(String id) {
+        WebView w = id == null ? null : appViews.get(id);
+        if (w == null) return;
+        appViews.remove(id);
+        lastShown.remove(id);
+        root.removeView(w);
+        try {
+            w.loadUrl("about:blank");
+        } catch (Exception ignored) {
+        }
+        w.onPause();
+        w.destroy();
+        if (id.equals(currentAppId)) {
+            currentAppId = null;
+            goHome();
+        }
+        notifyRunning();
+    }
+
+    private void closeOldestExcept(String keepId) {
+        String victim = null;
+        long oldest = Long.MAX_VALUE;
+        for (int i = 0; i < appViews.size(); i++) {
+            String k = appViews.keyAt(i);
+            if (k.equals(keepId)) continue;
+            long t = lastShown.containsKey(k) ? lastShown.get(k) : 0L;
+            if (t < oldest) {
+                oldest = t;
+                victim = k;
+            }
+        }
+        if (victim != null) closeApp(victim);
     }
 
     /** 按包 manifest 的 orientation 字段转屏：landscape/sensor 可选，默认竖屏。
@@ -205,9 +369,16 @@ public class MainActivity extends Activity {
             toast("应用不存在");
             return;
         }
+        /* 已开着 = 直接切回去（切换不退出）；没开 = 新建会话，超限先关最久没看的 */
+        if (appViews.get(id) == null && appViews.size() >= MAX_OPEN_APPS) {
+            closeOldestExcept(id);
+        }
+        if (appViews.get(id) == null) newAppWebView(id);
+        lastShown.put(id, System.currentTimeMillis());
         currentAppId = id;
         applyOrientation(m);
-        webView.loadUrl(url(id, "/" + store.entryOf(id)));
+        showAppView(id);
+        notifyRunning();
     }
 
     private boolean inLauncher() {
@@ -695,6 +866,14 @@ public class MainActivity extends Activity {
             if (!inLauncher()) goHome();
             return "";
         }
+        /* 任务管理：列出运行中的应用 / 显式关闭一个（关闭 = 销毁，音乐也会停） */
+        if ("running".equals(m)) {
+            return runningJson();
+        }
+        if ("close".equals(m)) {
+            closeApp(a);
+            return runningJson();
+        }
         if ("serverStart".equals(m)) {
             JSONObject o = new JSONObject();
             try {
@@ -1079,6 +1258,7 @@ public class MainActivity extends Activity {
             result(r);
             return;
         }
+        closeApp(id);   // 还开着的话先关掉会话
         new Thread(new Runnable() {
             public void run() {
                 boolean ok = store.remove(id);
@@ -1219,7 +1399,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
-        if (webView != null) webView.onPause();
+        // 不调用任何 WebView.onPause()：音乐盒要在整个 app 退到后台时继续放歌。
+        // 隐藏的应用 WebView 只是不可见，媒体和时钟都照常跑。
         // 局域网通道不随生命周期关闭：屏灭了也可能在上传，靠 PIN + 内网限制 + 空闲超时兜底
     }
 
@@ -1227,12 +1408,23 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (webView != null) webView.onResume();
+        if (currentAppId != null) {
+            WebView w = appViews.get(currentAppId);
+            if (w != null) w.onResume();
+        }
     }
 
     @Override
     protected void onDestroy() {
         if (server != null) server.stop();
         if (webView != null) webView.destroy();
+        for (int i = 0; i < appViews.size(); i++) {
+            try {
+                appViews.valueAt(i).destroy();
+            } catch (Exception ignored) {
+            }
+        }
+        appViews.clear();
         super.onDestroy();
     }
 }
