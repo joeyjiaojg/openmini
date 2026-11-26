@@ -12,7 +12,10 @@
   var pendingDelete = null;
   var lanUrl = '';
   var suppressClick = false;
-  var mainView = 'market';   // 主 Tab：market / installed
+  var mainView = 'market';   // 主 Tab：market / vault / installed
+  var vault = { unlocked: false, user: '', count: 0 };
+  var vaultApps = [];
+  var vaultBusy = false;
 
   // 市场里已装应用的版本，用来显示"已安装/可更新"
   function installedById(id) {
@@ -67,7 +70,12 @@
     serverStart: function () { return call('serverStart'); },
     serverStop: function () { call('serverStop'); },
     setOverlay: function (v) { call('setOverlay', !!v); },
-    toastMsg: function (m) { call('toastMsg', m); }
+    toastMsg: function (m) { call('toastMsg', m); },
+    vaultState: function () { return call('vaultState'); },
+    vaultUnlock: function (u, p, remember) { call('vaultUnlock', { u: u, p: p, remember: !!remember }); },
+    vaultLock: function () { return call('vaultLock'); },
+    vaultList: function () { call('vaultList'); },
+    vaultInstall: function (id) { call('vaultInstall', id); }
   };
 
   function host() {
@@ -311,7 +319,130 @@
       tabs[i].className = 'main-tab' + (tabs[i].getAttribute('data-view') === name ? ' on' : '');
     }
     $('view-market').className = 'view' + (name === 'market' ? ' on' : '');
+    $('view-vault').className = 'view' + (name === 'vault' ? ' on' : '');
     $('view-installed').className = 'view' + (name === 'installed' ? ' on' : '');
+    if (name === 'vault') refreshVault();
+  }
+
+
+  // ---------- 私有市场（加密仓） ----------
+
+  function vaultTip(text) {
+    var t = $('vaultTip');
+    if (t) t.textContent = text;
+  }
+
+  function refreshVault() {
+    var h = host();
+    if (!h) { vaultTip('浏览器里预览不支持私有市场'); return; }
+    var raw = '';
+    try { raw = h.vaultState(); } catch (e) { raw = ''; }
+    try {
+      var st = JSON.parse(raw || '{}');
+      if (st && typeof st.unlocked === 'boolean') vault = st;
+    } catch (e) { /* 忽略 */ }
+    renderVault();
+    if (vault.unlocked) { try { h.vaultList(); } catch (e) { } }
+  }
+
+  function renderVault() {
+    var login = $('vaultLogin'), appsBox = $('vaultApps'), lockBtn = $('vaultLockBtn');
+    if (!login || !appsBox) return;
+    if (vault.unlocked) {
+      login.style.display = 'none';
+      appsBox.style.display = '';
+      if (lockBtn) lockBtn.style.display = '';
+      vaultTip('已解锁 · ' + (vault.user || '') + ' · ' + (vaultApps.length || vault.count || 0) + ' 个应用');
+    } else {
+      login.style.display = '';
+      appsBox.style.display = 'none';
+      if (lockBtn) lockBtn.style.display = 'none';
+      vaultTip(vaultBusy ? '正在解密…' : '需要账号口令解锁，解锁后才能看到应用');
+    }
+    var box = $('vaultList');
+    while (box.firstChild) box.removeChild(box.firstChild);
+    if (!vault.unlocked) return;
+    if (!vaultApps.length) {
+      var none = document.createElement('div');
+      none.className = 'mkt-none';
+      none.textContent = '正在拉取清单…';
+      box.appendChild(none);
+      return;
+    }
+    for (var i = 0; i < vaultApps.length; i++) {
+      (function (it) {
+        var row = document.createElement('div');
+        row.className = 'mkt-item';
+
+        var ico = document.createElement('div');
+        ico.className = 'mkt-ico';
+        ico.textContent = it.icon || (it.id || '?').charAt(0).toUpperCase();
+        row.appendChild(ico);
+
+        var mid = document.createElement('div');
+        mid.className = 'mkt-mid';
+        var nm = document.createElement('div');
+        nm.className = 'mkt-nm';
+        nm.textContent = it.name || prettyName(it.id);
+        mid.appendChild(nm);
+        var sub = document.createElement('div');
+        sub.className = 'mkt-sub';
+        var inst = installedById(it.id);
+        var cmp = inst ? cmpVer(inst, it) : -1;
+        var isLatest = !!inst && cmp >= 0;
+        if (isLatest) sub.textContent = '已装 v' + (inst.version || it.version || '?') + ' · 已是最新';
+        else if (inst) sub.textContent = '已装 v' + (inst.version || '?') + ' · 可更新 v' + (it.version || '?');
+        else sub.textContent = 'v' + (it.version || '?') + ' · ' + fmtSize(it.size);
+        mid.appendChild(sub);
+        if (it.desc) {
+          var ds = document.createElement('div');
+          ds.className = 'mkt-desc';
+          ds.textContent = it.desc;
+          mid.appendChild(ds);
+        }
+        row.appendChild(mid);
+
+        var btn;
+        if (isLatest) {
+          btn = document.createElement('span');
+          btn.className = 'mkt-btn latest';
+          btn.textContent = '已最新';
+        } else {
+          btn = document.createElement('button');
+          btn.className = 'mkt-btn' + (inst ? ' ghost' : '');
+          btn.textContent = inst ? '更新' : '安装';
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            doInstallVault(it);
+          }, false);
+        }
+        row.appendChild(btn);
+        box.appendChild(row);
+      })(vaultApps[i]);
+    }
+  }
+
+  function doInstallVault(it) {
+    var h = host();
+    if (!h) { toast('浏览器里预览不支持'); return; }
+    openSheet();
+    $('prog').className = 'prog on';
+    $('progBar').style.width = '0%';
+    $('msg').textContent = '正在解密安装 ' + (it.name || it.id) + '…';
+    h.vaultInstall(it.id);
+  }
+
+  function doUnlock() {
+    var h = host();
+    if (!h) { toast('浏览器里预览不支持'); return; }
+    var u = ($('vaultUser').value || '').trim();
+    var p = $('vaultPass').value || '';
+    if (!u || !p) { toast('账号和口令都要填'); return; }
+    vaultBusy = true;
+    vaultTip('正在解密…');
+    $('vaultGo').disabled = true;
+    $('vaultGo').textContent = '解锁中…';
+    h.vaultUnlock(u, p, $('vaultRemember').checked);
   }
 
   // ---------- 宿主自升级 ----------
@@ -509,6 +640,24 @@
       toast('正在刷新应用市场…');
     }, false);
 
+    $('vaultGo').addEventListener('click', doUnlock, false);
+
+    $('vaultLockBtn').addEventListener('click', function () {
+      var h = host();
+      if (!h) return;
+      try { h.vaultLock(); } catch (e) { }
+      vault = { unlocked: false, user: '', count: 0 };
+      vaultApps = [];
+      vaultBusy = false;
+      $('vaultPass').value = '';
+      renderVault();
+      toast('已锁定私有市场');
+    }, false);
+
+    var vEnter = function (e) { if (e && e.key === 'Enter') doUnlock(); };
+    $('vaultUser').addEventListener('keydown', vEnter, false);
+    $('vaultPass').addEventListener('keydown', vEnter, false);
+
     $('mktSearch').addEventListener('input', function () {
       marketQuery = this.value;
       renderMarket();
@@ -624,8 +773,25 @@
         $('url').value = '';
         load();
         fetchMarket();
+        if (vault.unlocked) refreshVault();
         setTimeout(closeSheet, 600);
       }
+    },
+    onVault: function (r) {
+      vaultBusy = false;
+      var go = $('vaultGo');
+      if (go) { go.disabled = false; go.textContent = '解锁私有市场'; }
+      if (r && r.unlocked) {
+        vault = { unlocked: true, user: r.user || '', count: r.count || 0 };
+        if (r.apps) vaultApps = r.apps;
+        if (r.msg) toast(r.msg);
+        if (r.ok && !r.apps && host()) { try { host().vaultList(); } catch (e) { } }
+      } else {
+        vault = { unlocked: false, user: '', count: 0 };
+        vaultApps = [];
+        if (r && r.msg && r.msg !== 'locked') toast(r.msg);
+      }
+      renderVault();
     },
     onPickRefresh: function () {
       load();
