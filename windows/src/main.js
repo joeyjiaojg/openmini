@@ -331,7 +331,7 @@ function handleCall(payload) {
       version: HOST_VER, name: PLATFORM_NAME, lanRunning: false,
       platform: process.platform, dataDir: DATA, dataMode: DATA_INFO.mode
     });
-    case 'market': fetchMarket(false); return '';
+    case 'market': fetchMarket(a === true); return '';
     case 'updateCheck': return JSON.stringify({ ok: true, hasUpdate: false, version: HOST_VER, local: HOST_VER, size: 0, notes: '' });
     case 'updateInstall': return JSON.stringify({ ok: false, msg: '桌面版请从 GitHub Releases 手动更新' });
     case 'installUrl': installUrl(a); return '';
