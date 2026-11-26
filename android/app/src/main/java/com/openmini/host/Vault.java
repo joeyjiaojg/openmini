@@ -149,27 +149,26 @@ class Vault {
                         throw new IllegalArgumentException("账号和口令都要填");
                     }
                     JSONObject meta = new JSONObject(new String(fetchBytes("meta.json"), "UTF-8"));
-                    int iter = meta.optInt("iter", 200000);
-                    byte[] salt = Base64.decode(meta.optString("salt", ""), Base64.NO_WRAP);
-                    if (salt.length < 8) throw new IOException("加密仓参数坏了");
-                    byte[] k = pbkdf2((account.trim() + "\u001f" + password).getBytes("UTF-8"), salt, iter, 32);
+                    String[] who = new String[1];
+                    byte[] k = deriveKey(meta, account.trim(), password, who);
                     JSONObject cat = fetchCatalog(k);
+                    final String shown = who[0] == null ? account.trim() : who[0];
                     synchronized (Vault.this) {
                         key = k;
                         catalog = cat;
-                        user = account.trim();
+                        user = shown;
                     }
                     if (remember) {
                         prefs.edit()
                                 .putString("k", Base64.encodeToString(k, Base64.NO_WRAP))
-                                .putString("u", account.trim())
+                                .putString("u", shown)
                                 .apply();
                     } else {
                         prefs.edit().remove("k").remove("u").apply();
                     }
                     o.put("ok", true);
                     o.put("unlocked", true);
-                    o.put("user", account.trim());
+                    o.put("user", shown);
                     o.put("count", apps().length());
                     o.put("msg", "已解锁");
                 } catch (Exception e) {
@@ -257,6 +256,52 @@ class Vault {
                 cb.done(o);
             }
         }).start();
+    }
+
+    /**
+     * 从 meta.json 里取出主密钥。
+     * v2：users[] 里每个账号一条「密钥信封」= AES-GCM(KEK, MK)，AAD 绑定账号名；
+     *     先试同名条目，再逐个试（容忍大小写差异）——所以加账号只改 meta.json，包不用重传。
+     * v1：老仓没有 users，口令直接派生成文件密钥。
+     * who[0] 回填规范化账号名（显示用）。
+     */
+    private static byte[] deriveKey(JSONObject meta, String account, String password, String[] who)
+            throws Exception {
+        JSONArray users = meta.optJSONArray("users");
+        if (users != null && users.length() > 0) {
+            java.util.ArrayList<Integer> order = new java.util.ArrayList<Integer>();
+            for (int i = 0; i < users.length(); i++) {
+                JSONObject u = users.optJSONObject(i);
+                if (u != null && account.equalsIgnoreCase(u.optString("name", ""))) order.add(0, i);
+            }
+            for (int i = 0; i < users.length(); i++) {
+                if (!order.contains(Integer.valueOf(i))) order.add(i);
+            }
+            for (int n = 0; n < order.size(); n++) {
+                JSONObject u = users.optJSONObject(order.get(n).intValue());
+                if (u == null) continue;
+                String name = u.optString("name", "");
+                byte[] salt = Base64.decode(u.optString("salt", ""), Base64.NO_WRAP);
+                if (name.length() == 0 || salt.length < 8) continue;
+                int it = u.optInt("iter", 200000);
+                byte[] kek = pbkdf2((name + "\u001f" + password).getBytes("UTF-8"), salt, it, 32);
+                try {
+                    byte[] mk = decrypt(kek, Base64.decode(u.optString("wrap", ""), Base64.NO_WRAP),
+                            "wrap/" + name);
+                    if (mk.length == 32) {
+                        if (who != null) who[0] = name;
+                        return mk;
+                    }
+                } catch (Exception ignored) {
+                    // 这个账号的口令不对，试下一个
+                }
+            }
+            throw new IOException("账号或口令不对");
+        }
+        int iter = meta.optInt("iter", 200000);
+        byte[] salt = Base64.decode(meta.optString("salt", ""), Base64.NO_WRAP);
+        if (salt.length < 8) throw new IOException("加密仓参数坏了");
+        return pbkdf2((account + "\u001f" + password).getBytes("UTF-8"), salt, iter, 32);
     }
 
     // ---------- 取数与解密 ----------
