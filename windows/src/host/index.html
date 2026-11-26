@@ -14,28 +14,38 @@
     <p class="sub">OpenMini · 装一次，之后只装包</p>
   </header>
 
-  <section id="market">
-    <div class="mkt-head">
-      <h2>应用市场</h2>
-      <span class="mkt-badge">官方</span>
-    </div>
-    <p class="mkt-tip" id="marketTip">正在获取最新应用…</p>
-    <div class="mkt-tools" id="mktTools">
-      <input id="mktSearch" class="mkt-search" type="search" placeholder="搜索应用名称 / 描述…" autocomplete="off">
-      <div class="mkt-cats" id="mktCats"></div>
-    </div>
-    <div id="marketList" class="mkt-list"></div>
-  </section>
+  <nav class="main-tabs" id="mainTabs">
+    <button class="main-tab on" data-view="market">应用市场</button>
+    <button class="main-tab" data-view="installed">已装应用</button>
+  </nav>
 
-  <div class="section-label">我的应用</div>
-  <div id="grid" class="grid"></div>
-
-  <div id="empty" class="empty">
-    <div class="em-t">盒子还是空的</div>
-    <div class="em-s">点下面三种方式都能装</div>
+  <div id="view-market" class="view on">
+    <section id="market">
+      <div class="mkt-head">
+        <h2>应用市场</h2>
+        <span class="mkt-badge">官方</span>
+        <button id="mktRefresh" class="mkt-refresh" title="刷新应用市场" aria-label="刷新应用市场">↻</button>
+      </div>
+      <p class="mkt-tip" id="marketTip">正在获取最新应用…</p>
+      <div class="mkt-tools" id="mktTools">
+        <input id="mktSearch" class="mkt-search" type="search" placeholder="搜索应用名称 / 描述…" autocomplete="off">
+        <div class="mkt-cats" id="mktCats"></div>
+      </div>
+      <div id="marketList" class="mkt-list"></div>
+    </section>
   </div>
 
-  <button id="add" class="add">＋ 装一个应用</button>
+  <div id="view-installed" class="view">
+    <div class="section-label">我的应用</div>
+    <div id="grid" class="grid"></div>
+
+    <div id="empty" class="empty">
+      <div class="em-t">盒子还是空的</div>
+      <div class="em-s">点下面三种方式都能装</div>
+    </div>
+
+    <button id="add" class="add">＋ 装一个应用</button>
+  </div>
 
   <section id="updater" class="upd">
     <div class="upd-head">
