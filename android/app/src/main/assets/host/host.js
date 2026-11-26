@@ -16,6 +16,7 @@
   var vault = { unlocked: false, user: '', count: 0 };
   var vaultApps = [];
   var vaultBusy = false;
+  var runningIds = {};   // 运行中的应用 id -> {name}，宿主切会话时推送过来
 
   // 市场里已装应用的版本，用来显示"已安装/可更新"
   function installedById(id) {
@@ -67,6 +68,8 @@
     open: function (id) { call('open', id); },
     home: function () { call('home'); },
     back: function () { call('back'); },
+    running: function () { return call('running'); },
+    close: function (id) { call('close', id); },
     serverStart: function () { return call('serverStart'); },
     serverStop: function () { call('serverStop'); },
     setOverlay: function (v) { call('setOverlay', !!v); },
@@ -89,6 +92,14 @@
     var h = host();
     if (h) { try { raw = h.apps(); } catch (e) { raw = '[]'; } }
     try { apps = JSON.parse(raw) || []; } catch (e) { apps = []; }
+    /* 顺便拿一次运行中列表（页面刚载入时宿主推送可能早于监听器就位） */
+    if (h) {
+      try {
+        var rl = JSON.parse(h.running() || '[]');
+        runningIds = {};
+        for (var i = 0; i < rl.length; i++) runningIds[rl[i].id] = { name: rl[i].name };
+      } catch (e) { }
+    }
     render();
   }
 
@@ -514,7 +525,7 @@
     for (var i = 0; i < apps.length; i++) {
       (function (a) {
         var card = document.createElement('div');
-        card.className = 'card';
+        card.className = 'card' + (runningIds[a.id] ? ' running' : '');
         card.appendChild(iconNode(a));
 
         var nm = document.createElement('div');
@@ -526,6 +537,28 @@
         ver.className = 'ver';
         ver.textContent = a.version ? 'v' + String(a.version) : '';
         card.appendChild(ver);
+
+        /* 任务管理：运行中的应用带 ✕，用户点 ✕ 才真正关闭（音乐也会停） */
+        if (runningIds[a.id]) {
+          var x = document.createElement('button');
+          x.className = 'run-x';
+          x.textContent = '✕';
+          x.setAttribute('aria-label', '关闭 ' + (a.name || a.id));
+          x.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var h = host();
+            if (h) h.close(a.id);
+            delete runningIds[a.id];
+            render();
+            toast('已关闭「' + (a.name || a.id) + '」');
+          }, false);
+          card.appendChild(x);
+
+          var dot = document.createElement('div');
+          dot.className = 'run-dot';
+          dot.textContent = '运行中';
+          card.appendChild(dot);
+        }
 
         bindCard(card, a);
         g.appendChild(card);
@@ -797,6 +830,13 @@
       load();
       fetchMarket();
       toast('收到新包');
+    },
+    /* 宿主推送：运行中的应用变了（打开/关闭/最小化） */
+    onRunning: function (list) {
+      runningIds = {};
+      var arr = list || [];
+      for (var i = 0; i < arr.length; i++) runningIds[arr[i].id] = { name: arr[i].name };
+      render();
     },
     onSelfUpdate: function (r) {
       selfChecking = false;
