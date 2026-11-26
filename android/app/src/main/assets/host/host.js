@@ -12,6 +12,7 @@
   var pendingDelete = null;
   var lanUrl = '';
   var suppressClick = false;
+  var mainView = 'market';   // 主 Tab：market / installed
 
   // 市场里已装应用的版本，用来显示"已安装/可更新"
   function installedById(id) {
@@ -53,7 +54,7 @@
 
   var api = {
     apps: function () { return call('apps'); },
-    market: function () { call('market'); },
+    market: function (force) { call('market', !!force); },
     updateCheck: function () { call('updateCheck'); },
     updateInstall: function () { call('updateInstall'); },
     meta: function () { return call('meta'); },
@@ -293,12 +294,24 @@
     h.installUrl(it.url);
   }
 
-  function fetchMarket() {
+  function fetchMarket(force) {
     var h = host();
     if (!h) return;
     marketLoaded = false;
     renderMarket();
-    h.market();
+    var btn = $('mktRefresh');
+    if (btn && force) btn.className = 'mkt-refresh spin';
+    h.market(!!force);
+  }
+
+  function setMainView(name) {
+    mainView = name;
+    var tabs = document.querySelectorAll('.main-tab');
+    for (var i = 0; i < tabs.length; i++) {
+      tabs[i].className = 'main-tab' + (tabs[i].getAttribute('data-view') === name ? ' on' : '');
+    }
+    $('view-market').className = 'view' + (name === 'market' ? ' on' : '');
+    $('view-installed').className = 'view' + (name === 'installed' ? ' on' : '');
   }
 
   // ---------- 宿主自升级 ----------
@@ -480,6 +493,22 @@
   // ---------- 交互绑定 ----------
 
   function bind() {
+    var mainTabs = document.querySelectorAll('.main-tab');
+    for (var i = 0; i < mainTabs.length; i++) {
+      (function (t) {
+        t.addEventListener('click', function () { setMainView(t.getAttribute('data-view')); }, false);
+      })(mainTabs[i]);
+    }
+
+    $('mktRefresh').addEventListener('click', function () {
+      var btn = this;
+      if (btn.className.indexOf('spin') >= 0) return;
+      if (!host()) { toast('浏览器里预览不支持'); return; }
+      btn.className = 'mkt-refresh spin';
+      fetchMarket(true);
+      toast('正在刷新应用市场…');
+    }, false);
+
     $('mktSearch').addEventListener('input', function () {
       marketQuery = this.value;
       renderMarket();
@@ -570,6 +599,8 @@
   window.BoxUI = {
     onMarket: function (r) {
       marketLoaded = true;
+      var btn = $('mktRefresh');
+      if (btn) btn.className = 'mkt-refresh';
       if (r && r.ok && r.apps) {
         marketApps = r.apps;
       } else {
