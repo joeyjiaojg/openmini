@@ -23,6 +23,7 @@ import android.webkit.WebViewClient;
 import org.json.JSONObject;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -58,6 +59,8 @@ public class MainActivity extends Activity {
     static final String ID_RE = "[a-z0-9][a-z0-9_-]{0,39}";
     /** 应用向宿主索取赋能配置的虚拟路径（同源，只能取到自己那份） */
     static final String PART_VAULT = "__om__/vault.json";
+    /** 应用侧的同源代理：给没有 CORS 头的公开接口兜底（只放行私有配置里的域名） */
+    static final String PART_PROXY = "__om__/proxy";
     private static final String PROMPT_PREFIX = "__om__";
     private static final int REQ_PICK = 1001;
     private static final int REQ_INSTALL_UNKNOWN = 1002;
@@ -312,6 +315,52 @@ public class MainActivity extends Activity {
             vr.setResponseHeaders(vh);
             return vr;
         }
+        /* 同源代理：只有解锁后、且目标域名写在该应用私有配置的 proxyHosts 里才放行。
+           只许 GET https、不跟随跳转、限 2MB —— 它不是通用爬虫通道。 */
+        if (PART_PROXY.equals(rel)) {
+            byte[] body;
+            int code = 200;
+            String reason = "OK";
+            try {
+                String cfg = HOST.equals(sub) ? null : vault.cfgFor(sub);
+                if (cfg == null) throw new IOException(vault.unlocked() ? "no-config" : "locked");
+                String target = u.getQueryParameter("u");
+                if (target == null || !target.toLowerCase(Locale.US).startsWith("https://")) {
+                    throw new IOException("只允许 https");
+                }
+                String th = Uri.parse(target).getHost();
+                JSONArray allow = new JSONObject(cfg).optJSONArray("proxyHosts");
+                boolean okHost = false;
+                if (th != null && allow != null) {
+                    for (int i = 0; i < allow.length(); i++) {
+                        if (th.equalsIgnoreCase(allow.optString(i))) {
+                            okHost = true;
+                            break;
+                        }
+                    }
+                }
+                if (!okHost) throw new IOException("域名未授权");
+                body = proxyGet(target);
+            } catch (Exception e) {
+                code = 403;
+                reason = "Denied";
+                try {
+                    body = new JSONObject().put("ok", false)
+                            .put("msg", e.getMessage() == null ? "拒绝" : e.getMessage())
+                            .toString().getBytes("UTF-8");
+                } catch (Exception x) {
+                    body = new byte[0];
+                }
+            }
+            WebResourceResponse vr = new WebResourceResponse("application/json", "UTF-8", code, reason,
+                    new HashMap<String, String>(), new ByteArrayInputStream(body));
+            HashMap<String, String> ph = new HashMap<String, String>();
+            ph.put("Cache-Control", "no-store");
+            ph.put("X-Content-Type-Options", "nosniff");
+            vr.setResponseHeaders(ph);
+            return vr;
+        }
+
         // 不让包读取隐藏文件（如 .git）
         for (String seg : rel.split("/")) {
             if (seg.startsWith(".")) return notFound();
@@ -350,6 +399,36 @@ public class MainActivity extends Activity {
 
         r.setResponseHeaders(headers);
         return r;
+    }
+
+    /** 代理取数：GET、https、禁跳转、2MB 上限、伪装成普通浏览器（部分接口认 UA） */
+    private static byte[] proxyGet(String urlStr) throws IOException {
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(urlStr).openConnection();
+            c.setConnectTimeout(12000);
+            c.setReadTimeout(18000);
+            c.setInstanceFollowRedirects(false);
+            c.setRequestProperty("User-Agent",
+                    "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) "
+                            + "Chrome/120.0.0.0 Mobile Safari/537.36");
+            c.setRequestProperty("Accept", "application/json,text/plain,*/*");
+            int code = c.getResponseCode();
+            if (code != 200) throw new IOException("HTTP " + code);
+            InputStream in = c.getInputStream();
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n, total = 0;
+            while ((n = in.read(buf)) > 0) {
+                total += n;
+                if (total > 2 * 1024 * 1024) throw new IOException("内容过大");
+                out.write(buf, 0, n);
+            }
+            in.close();
+            return out.toByteArray();
+        } finally {
+            if (c != null) c.disconnect();
+        }
     }
 
     private static WebResourceResponse notFound() {
