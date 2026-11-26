@@ -16,6 +16,7 @@
 
   <nav class="main-tabs" id="mainTabs">
     <button class="main-tab on" data-view="market">应用市场</button>
+    <button class="main-tab" data-view="vault">私有市场</button>
     <button class="main-tab" data-view="installed">已装应用</button>
   </nav>
 
@@ -32,6 +33,29 @@
         <div class="mkt-cats" id="mktCats"></div>
       </div>
       <div id="marketList" class="mkt-list"></div>
+    </section>
+  </div>
+
+  <div id="view-vault" class="view">
+    <section id="vault">
+      <div class="mkt-head">
+        <h2>私有市场</h2>
+        <span class="mkt-badge lock">加密</span>
+        <button id="vaultLockBtn" class="mkt-refresh" title="锁定并清除记住的登录" aria-label="锁定">⏏</button>
+      </div>
+      <p class="mkt-tip" id="vaultTip">需要账号口令解锁，解锁后才能看到应用</p>
+
+      <div id="vaultLogin">
+        <input id="vaultUser" class="mkt-search vault-field" type="text" placeholder="账号" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <input id="vaultPass" class="mkt-search vault-field" type="password" placeholder="口令" autocomplete="off">
+        <label class="vault-remember"><input type="checkbox" id="vaultRemember" checked><span>记住登录（下次自动解锁）</span></label>
+        <button id="vaultGo" class="vault-go">解锁私有市场</button>
+        <p class="vault-note">仓里只存密文，没有任何明文音源接口；口令只在本机用于解密，不上传。</p>
+      </div>
+
+      <div id="vaultApps" class="vault-apps">
+        <div id="vaultList" class="mkt-list"></div>
+      </div>
     </section>
   </div>
 
