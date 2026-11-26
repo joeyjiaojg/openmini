@@ -69,6 +69,7 @@ v1.6.0 起，启动器多了一个「私有市场」Tab。公开市场只放不�
 - 在小盒子里输入账号 + 口令 → 本机派生密钥（PBKDF2-HMAC-SHA256）→ 解密清单 → 安装时再解密包并校验 sha256
 - 已装应用只能从 `https://<id>.apps.local/__om__/vault.json` 拿到**自己那份**配置；宿主未解锁时该请求返回 403，应用自动退回纯本地模式
 - 应用包里不含任何接口地址与榜单数据，包本身不构成可用的「工具」
+- 加密仓是「一个主密钥 + 每账号一份密钥信封」：`vault.py adduser / passwd / deluser` 加人、改口令、收回权限都只改 `meta.json`，应用包不用重传（v1.6.1 起支持）
 
 细节、威胁模型与维护流程见 [docs/PRIVATE-MARKET.md](docs/PRIVATE-MARKET.md)。
 
