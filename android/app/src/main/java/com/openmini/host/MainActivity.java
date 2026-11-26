@@ -56,6 +56,8 @@ public class MainActivity extends Activity {
     static final String DOMAIN = ".apps.local";
     static final String HOST = "host";
     static final String ID_RE = "[a-z0-9][a-z0-9_-]{0,39}";
+    /** 应用向宿主索取赋能配置的虚拟路径（同源，只能取到自己那份） */
+    static final String PART_VAULT = "__om__/vault.json";
     private static final String PROMPT_PREFIX = "__om__";
     private static final int REQ_PICK = 1001;
     private static final int REQ_INSTALL_UNKNOWN = 1002;
@@ -83,6 +85,7 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private AppStore store;
+    private Vault vault;
     private MiniServer server;
     private String currentAppId = null;
     private long lastBackAt = 0;
@@ -95,6 +98,8 @@ public class MainActivity extends Activity {
 
         store = new AppStore(this);
         store.seedBuiltins();
+        vault = new Vault(this, store);
+        vault.restore();   // 记住登录的话，后台静默恢复会话
         server = new MiniServer(store, 8089);
         server.setListener(new MiniServer.Listener() {
             public void onInstalled(String json) {
@@ -276,6 +281,37 @@ public class MainActivity extends Activity {
         if (path.indexOf('\0') >= 0 || path.contains("..") || path.contains("//")) return notFound();
 
         String rel = path.startsWith("/") ? path.substring(1) : path;
+
+        /* 私有市场赋能配置：只下发给清单里配置过、且宿主已解锁的那个应用自己。
+           没解锁 / 没配过 → 403 内容，应用自然降级为纯本地模式。 */
+        if (PART_VAULT.equals(rel)) {
+            JSONObject o = new JSONObject();
+            String cfg = HOST.equals(sub) ? null : vault.cfgFor(sub);
+            try {
+                if (cfg != null) {
+                    o.put("ok", true);
+                    o.put("app", sub);
+                    o.put("cfg", new JSONObject(cfg));
+                } else {
+                    o.put("ok", false);
+                    o.put("msg", vault.unlocked() ? "no-config" : "locked");
+                }
+            } catch (Exception ignored) {
+            }
+            byte[] body;
+            try {
+                body = o.toString().getBytes("UTF-8");
+            } catch (Exception e) {
+                body = new byte[0];
+            }
+            WebResourceResponse vr = new WebResourceResponse("application/json", "UTF-8",
+                    new ByteArrayInputStream(body));
+            HashMap<String, String> vh = new HashMap<String, String>();
+            vh.put("Cache-Control", "no-store");
+            vh.put("X-Content-Type-Options", "nosniff");
+            vr.setResponseHeaders(vh);
+            return vr;
+        }
         // 不让包读取隐藏文件（如 .git）
         for (String seg : rel.split("/")) {
             if (seg.startsWith(".")) return notFound();
@@ -434,6 +470,51 @@ public class MainActivity extends Activity {
         String a = arg instanceof String ? (String) arg : (arg == null ? null : String.valueOf(arg));
 
         if ("apps".equals(m)) return store.listJson();
+
+        // ---------- 私有市场（加密仓） ----------
+        if ("vaultState".equals(m)) return vault.stateJson().toString();
+        if ("vaultUnlock".equals(m)) {
+            String u = "", pw = "";
+            boolean rem = true;
+            try {
+                JSONObject p = new JSONObject(a == null || a.length() == 0 ? "{}" : a);
+                u = p.optString("u", "");
+                pw = p.optString("p", "");
+                rem = p.optBoolean("remember", true);
+            } catch (Exception ignored) {
+            }
+            vault.unlock(u, pw, rem, new Vault.Cb() {
+                public void done(JSONObject o) {
+                    js("window.BoxUI&&BoxUI.onVault(" + o + ")");
+                }
+            });
+            return "";
+        }
+        if ("vaultLock".equals(m)) {
+            vault.lock();
+            return vault.stateJson().toString();
+        }
+        if ("vaultList".equals(m)) {
+            vault.list(new Vault.Cb() {
+                public void done(JSONObject o) {
+                    js("window.BoxUI&&BoxUI.onVault(" + o + ")");
+                }
+            });
+            return "";
+        }
+        if ("vaultInstall".equals(m)) {
+            vault.install(a, new Vault.Progress() {
+                public void pct(final int p) {
+                    js("window.BoxUI&&BoxUI.onProgress(" + p + ")");
+                }
+            }, new Vault.Cb() {
+                public void done(JSONObject o) {
+                    js("window.BoxUI&&BoxUI.onResult(" + o + ")");
+                }
+            });
+            return "";
+        }
+
         if ("market".equals(m)) {
             loadMarket();
             return "";
