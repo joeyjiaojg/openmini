@@ -88,6 +88,50 @@ header .sub {
   transition: transform 0.12s ease, background 0.12s ease;
 }
 
+/* 任务管理：运行中的应用 */
+.card.running {
+  border-color: rgba(88, 200, 120, 0.45);
+}
+
+.run-x {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #E8E2D8;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.run-x:active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.run-dot {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  font-size: 10px;
+  color: #58C878;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.run-dot::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #58C878;
+}
+
 .card:active {
   transform: scale(0.96);
   background: #241F18;
