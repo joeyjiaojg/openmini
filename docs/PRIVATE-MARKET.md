@@ -83,6 +83,39 @@ openmini-vault/{meta.json,catalog.enc,apps/*.enc}      # 密文镜像
 
 换口令 = `vault.py passwd` 重写那一条密钥信封，或重新 `pack`；旧信封立刻失效。
 
+
+## 4.1 同源代理（`/__om__/proxy`）
+
+有些公开接口（网易云搜索、补源解析）不返回 CORS 头，网页里直接 `fetch` 会被浏览器拦掉。宿主因此提供了一个**受限**的同源代理：
+
+```
+GET https://<app>.apps.local/__om__/proxy?u=<encodeURIComponent(https地址)>
+```
+
+放行条件（全部满足才转发）：
+
+- 宿主已解锁，且该应用在清单里有 `cfg`；
+- 目标必须是 `https://`；
+- 目标域名在**该应用自己**那份 `cfg.proxyHosts` 里（如音乐盒只放了 `music.163.com`、`music-api.gdstudio.xyz`）；
+- 只 GET、不跟随跳转、响应上限 2MB、12s/18s 超时。
+
+它不是通用爬虫通道：域名清单在加密仓里，改清单要重新 pack，未解锁一律 403。
+
+## 4.2 音乐盒的「补源」链路
+
+主音源（JOOX）曲库偏华语，`Dua Lipa`、`排骨教主` 这类搜不到 0 条。做法：
+
+1. `searchSongs()` 先问主音源；结果 < 3 条时再问网易搜索（经上面的代理），按「歌名+歌手」合并去重；
+2. 补源条目的 `mid` 记成 `ne:<网易 id>`，`resolvePlayUrl()` 看到前缀就走补源解析（gdstudio，503 时重试 3 次 ×0.9s）；
+3. 歌词取网易那份（`meting server=netease&type=lrc&id=`），不用再按歌名碰运气；
+4. 播放页的音源标签会显示「网易补源」，和「JOOX 音源」区分。
+
+## 4.3 口味类别与配额
+
+设置页「口味类别」= 多选标签（古风/欧美流行/粤语/民谣/钢琴/情歌/经典老歌/日系），每个标签自带「实测搜得到」的关键词与歌手池（欧美流行里的 Dua Lipa 靠补源，其余如 Taylor Swift/The Weeknd/Billie Eilish/Bruno Mars/Coldplay/Ed Sheeran/Imagine Dragons/Katy Perry/Adele/Eminem/Michael Jackson 在主音源就有）。
+
+选了 N 个类别，30 首按 `30/N`（每类至少 6）分名额先占位，再用常听歌手/播放行为补满；同一首的不同版本（繁简写法、Live/重制）靠「括号后缀 + 繁简 + 歌手相似+时长相同」三重指纹去重。
+
 ## 5. 多账号（给家人/朋友开权限）
 
 结构是「一个主密钥 + 每账号一份信封」，所以**加人不用重新加密任何应用包**：
