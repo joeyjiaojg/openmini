@@ -316,7 +316,9 @@ public class MainActivity extends Activity {
             return vr;
         }
         /* 同源代理：只有解锁后、且目标域名写在该应用私有配置的 proxyHosts 里才放行。
-           只许 GET https、不跟随跳转、限 2MB —— 它不是通用爬虫通道。 */
+           默认 GET https；带 m=POST&b=<表单体> 时转发为受限 POST（体积 ≤16KB），
+           供歌曲宝这类「换播放链接必须 POST」的接口使用。
+           不跟随跳转、响应限 2MB —— 它不是通用爬虫通道。 */
         if (PART_PROXY.equals(rel)) {
             byte[] body;
             int code = 200;
@@ -340,7 +342,14 @@ public class MainActivity extends Activity {
                     }
                 }
                 if (!okHost) throw new IOException("域名未授权");
-                body = proxyGet(target);
+                if ("POST".equals(u.getQueryParameter("m"))) {
+                    String b = u.getQueryParameter("b");
+                    byte[] payload = b == null ? new byte[0] : b.getBytes("UTF-8");
+                    if (payload.length > 16 * 1024) throw new IOException("请求体过大");
+                    body = proxyPost(target, payload);
+                } else {
+                    body = proxyGet(target);
+                }
             } catch (Exception e) {
                 code = 403;
                 reason = "Denied";
@@ -413,6 +422,44 @@ public class MainActivity extends Activity {
                     "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) "
                             + "Chrome/120.0.0.0 Mobile Safari/537.36");
             c.setRequestProperty("Accept", "application/json,text/plain,*/*");
+            int code = c.getResponseCode();
+            if (code != 200) throw new IOException("HTTP " + code);
+            InputStream in = c.getInputStream();
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n, total = 0;
+            while ((n = in.read(buf)) > 0) {
+                total += n;
+                if (total > 2 * 1024 * 1024) throw new IOException("内容过大");
+                out.write(buf, 0, n);
+            }
+            in.close();
+            return out.toByteArray();
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
+    /** 受限 POST：仅当目标域名在 proxyHosts 白名单且请求体 ≤16KB 时由上面调用 */
+    private static byte[] proxyPost(String urlStr, byte[] payload) throws IOException {
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(urlStr).openConnection();
+            c.setConnectTimeout(12000);
+            c.setReadTimeout(18000);
+            c.setInstanceFollowRedirects(false);
+            c.setRequestMethod("POST");
+            c.setDoOutput(true);
+            c.setRequestProperty("User-Agent",
+                    "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) "
+                            + "Chrome/120.0.0.0 Mobile Safari/537.36");
+            c.setRequestProperty("Accept", "application/json,text/plain,*/*");
+            c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+            c.setRequestProperty("X-Requested-With", "XMLHttpRequest");
+            OutputStream os = c.getOutputStream();
+            os.write(payload);
+            os.flush();
+            os.close();
             int code = c.getResponseCode();
             if (code != 200) throw new IOException("HTTP " + code);
             InputStream in = c.getInputStream();
