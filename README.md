@@ -61,6 +61,17 @@ OpenMini 把**运行时**和**内容**拆开：
 
 长按应用卡片可删除（存档一起清掉，因为存在该 origin 下）。
 
+## 私有市场（授权应用）
+
+v1.6.0 起，启动器多了一个「私有市场」Tab。公开市场只放不含第三方接口的应用；需要加载外部音源/接口的应用走私有市场：
+
+- 仓库 `openmini-market-private`（私有）里只有密文：`meta.json`（盐/迭代次数）、`catalog.enc`、`apps/*.enc`
+- 在小盒子里输入账号 + 口令 → 本机派生密钥（PBKDF2-HMAC-SHA256）→ 解密清单 → 安装时再解密包并校验 sha256
+- 已装应用只能从 `https://<id>.apps.local/__om__/vault.json` 拿到**自己那份**配置；宿主未解锁时该请求返回 403，应用自动退回纯本地模式
+- 应用包里不含任何接口地址与榜单数据，包本身不构成可用的「工具」
+
+细节、威胁模型与维护流程见 [docs/PRIVATE-MARKET.md](docs/PRIVATE-MARKET.md)。
+
 ## 应用包格式
 
 一个 zip，根目录直接放 `manifest.json` + 入口 + 资源：
