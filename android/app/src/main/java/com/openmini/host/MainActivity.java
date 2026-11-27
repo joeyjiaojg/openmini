@@ -2,16 +2,23 @@ package com.openmini.host;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.PendingIntent;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.graphics.drawable.GradientDrawable;
+import android.media.MediaMetadata;
+import android.media.session.MediaSession;
+import android.media.session.PlaybackState;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.util.ArrayMap;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -112,6 +119,14 @@ public class MainActivity extends Activity {
     private long lastBackAt = 0;
     private volatile boolean overlayOpen = false;
 
+    /* 车载/耳机媒体键（蓝牙 AVRCP 的上一曲/下一曲/播放暂停）：
+     * 系统把按键发给「当前活跃的 MediaSession」，WebView 里的 <audio> 自己收不到。
+     * 宿主注册一个会话替音乐应用接管按键，再翻译成 JS 调用打到那个应用的 WebView。 */
+    private MediaSession mediaSession;
+    private String mediaOwnerId = null;   // 当前占用媒体会话的应用 id（音乐盒上报）
+    private long mediaKeyAt = 0;          // 车机容易重复发键，做 250ms 去抖
+    private static final String MEDIA_APP = "music";
+
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -133,6 +148,7 @@ public class MainActivity extends Activity {
         // WebView 远程调试口：端到端自动化测试用（CDP），发布版也开着——
         // 需要 adb/USB 权限才能连上，风险面与 adb 本身一致
         WebView.setWebContentsDebuggingEnabled(true);
+        initMediaSession();
 
         // 多 WebView 会话：启动器 + N 个应用 WebView 叠在同一个 FrameLayout 里，
         // 切换 = 切可见性，页面都不销毁（音乐盒后台放歌就靠这个）
@@ -393,6 +409,23 @@ public class MainActivity extends Activity {
         String host = p.getHost();
         return scheme != null && "https".equalsIgnoreCase(scheme)
                 && host != null && (HOST + DOMAIN).equalsIgnoreCase(host);
+    }
+
+    /** 已安装应用的页面 origin（https://<id>.apps.local/...），用于媒体状态上报鉴权 */
+    private boolean isAppUrl(String u) {
+        String sub = appSub(u);
+        return sub != null && store.get(sub) != null;
+    }
+
+    private static String appSub(String u) {
+        if (u == null) return null;
+        Uri p = Uri.parse(u);
+        String scheme = p.getScheme();
+        String host = p.getHost();
+        if (scheme == null || !"https".equalsIgnoreCase(scheme) || host == null
+                || !host.toLowerCase(Locale.US).endsWith(DOMAIN)) return null;
+        String sub = host.substring(0, host.length() - DOMAIN.length());
+        return sub.matches(ID_RE) && !HOST.equals(sub) ? sub : null;
     }
 
     // ---------- 网络与导航 ----------
@@ -686,6 +719,123 @@ public class MainActivity extends Activity {
         return null;
     }
 
+    // ---------- 车载/耳机媒体键（MediaSession） ----------
+
+    private void initMediaSession() {
+        try {
+            mediaSession = new MediaSession(this, "openmini.music");
+            mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS
+                    | MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
+            // 锁屏/通知栏点封面能回到宿主（不指定具体应用，交给启动器）
+            Intent open = new Intent(this, MainActivity.class);
+            int piFlag = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= 23) piFlag |= PendingIntent.FLAG_IMMUTABLE;
+            mediaSession.setSessionActivity(PendingIntent.getActivity(this, 0, open, piFlag));
+            mediaSession.setCallback(new MediaSession.Callback() {
+                @Override public void onPlay() { mediaKey("play"); }
+                @Override public void onPause() { mediaKey("pause"); }
+                @Override public void onSkipToNext() { mediaKey("next"); }
+                @Override public void onSkipToPrevious() { mediaKey("prev"); }
+                @Override public void onStop() { mediaKey("stop"); }
+                @Override public boolean onMediaButtonEvent(Intent intent) {
+                    return handleMediaButton(intent) || super.onMediaButtonEvent(intent);
+                }
+            });
+            mediaSession.setPlaybackState(new PlaybackState.Builder()
+                    .setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE
+                            | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS
+                            | PlaybackState.ACTION_STOP | PlaybackState.ACTION_PLAY_PAUSE)
+                    .setState(PlaybackState.STATE_STOPPED, 0, 1.0f).build());
+            mediaSession.setActive(true);
+        } catch (Exception e) {
+            mediaSession = null;
+        }
+    }
+
+    /** KEYCODE_MEDIA_* → 语义动作。返回 null 表示不是媒体键 */
+    private static String mediaAction(int code) {
+        switch (code) {
+            case KeyEvent.KEYCODE_MEDIA_NEXT: return "next";
+            case KeyEvent.KEYCODE_MEDIA_PREVIOUS: return "prev";
+            case KeyEvent.KEYCODE_MEDIA_PLAY: return "play";
+            case KeyEvent.KEYCODE_MEDIA_PAUSE: return "pause";
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+            case KeyEvent.KEYCODE_HEADSETHOOK: return "toggle";
+            case KeyEvent.KEYCODE_MEDIA_STOP: return "stop";
+            default: return null;
+        }
+    }
+
+    /** 从 MediaSession 回调 / 系统广播里取按键码 */
+    private boolean handleMediaButton(Intent intent) {
+        if (intent == null) return false;
+        KeyEvent key = intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
+        if (key == null || key.getAction() != KeyEvent.ACTION_DOWN) return false;
+        String a = mediaAction(key.getKeyCode());
+        if (a == null) return false;
+        mediaKey(a);
+        return true;
+    }
+
+    /** 把媒体键翻译成 JS 调用打到音乐盒 WebView（没开音乐盒就忽略） */
+    private void mediaKey(final String action) {
+        long now = System.currentTimeMillis();
+        if (now - mediaKeyAt < 250) return;   // 车机常连发两次
+        mediaKeyAt = now;
+        runOnUiThread(new Runnable() {
+            public void run() {
+                String id = mediaOwnerId != null ? mediaOwnerId : MEDIA_APP;
+                WebView w = appViews.get(id);
+                if (w == null) return;
+                String code = "(function(){var m=window.__musicbox;if(!m||!m.mediaKey)return;"
+                        + "m.mediaKey(" + JSONObject.quote(action) + ");})()";
+                try {
+                    w.evaluateJavascript(code, null);
+                } catch (Exception ignored) {
+                }
+            }
+        });
+    }
+
+    /** 音乐盒上报播放状态：{playing,title,artist,position,duration} → 车机屏幕/进度条 */
+    private void mediaState(JSONObject a) {
+        if (mediaSession == null || a == null) return;
+        try {
+            boolean playing = a.optBoolean("playing", false);
+            String title = a.optString("title", "");
+            String artist = a.optString("artist", "");
+            long pos = a.optLong("position", 0);
+            long dur = a.optLong("duration", 0);
+            MediaMetadata.Builder meta = new MediaMetadata.Builder()
+                    .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+                    .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
+                    .putString(MediaMetadata.METADATA_KEY_ALBUM, "小盒子音乐盒")
+                    .putLong(MediaMetadata.METADATA_KEY_DURATION, dur);
+            mediaSession.setMetadata(meta.build());
+            mediaSession.setPlaybackState(new PlaybackState.Builder()
+                    .setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE
+                            | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS
+                            | PlaybackState.ACTION_STOP | PlaybackState.ACTION_PLAY_PAUSE)
+                    .setState(playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED,
+                            pos, playing ? 1.0f : 0.0f).build());
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Activity 兜底：某些车机（尤其老款）把媒体键当普通按键发到前台 Activity。
+     *  MediaSession 已处理时会返回 true 拦掉，走不到这里，不会重复切歌。 */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            String a = mediaAction(event.getKeyCode());
+            if (a != null && appViews.get(mediaOwnerId != null ? mediaOwnerId : MEDIA_APP) != null) {
+                mediaKey(a);
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
     // ---------- 与页面沟通 ----------
 
     private void js(final String code) {
@@ -734,13 +884,27 @@ public class MainActivity extends Activity {
                 res.cancel();
                 return true;
             }
+            JSONObject req;
+            try {
+                req = new JSONObject(message.substring(PROMPT_PREFIX.length()));
+            } catch (Exception e) {
+                res.confirm("{\"ok\":false,\"msg\":\"bad request\"}");
+                return true;
+            }
+            /* 应用页面（音乐盒）唯一可调用的桥：上报播放状态给车机 MediaSession。
+             * 只收状态、不返回任何宿主能力，来源必须是已安装应用的 *.apps.local。 */
             if (!isLauncherUrl(url)) {
-                res.confirm("{\"ok\":false,\"msg\":\"forbidden\"}");
+                if ("mediaState".equals(req.optString("m", "")) && isAppUrl(url)) {
+                    mediaOwnerId = appSub(url);
+                    mediaState(req.optJSONObject("a"));
+                    res.confirm("{\"ok\":true}");
+                } else {
+                    res.confirm("{\"ok\":false,\"msg\":\"forbidden\"}");
+                }
                 return true;
             }
             String out;
             try {
-                JSONObject req = new JSONObject(message.substring(PROMPT_PREFIX.length()));
                 out = dispatch(req.optString("m", ""), req.opt("a"));
             } catch (Exception e) {
                 out = "{\"ok\":false,\"msg\":\"bad request\"}";
@@ -1416,6 +1580,14 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (mediaSession != null) {
+            try {
+                mediaSession.setActive(false);
+                mediaSession.release();
+            } catch (Exception ignored) {
+            }
+            mediaSession = null;
+        }
         if (server != null) server.stop();
         if (webView != null) webView.destroy();
         for (int i = 0; i < appViews.size(); i++) {
